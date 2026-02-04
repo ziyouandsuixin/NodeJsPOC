@@ -1,0 +1,36 @@
+{
+  "RootCause": {
+    "InputValidation": [
+      {
+        "name": "@orval/mock UnsanitizedConstValueInjection",
+        "pattern": "该漏洞源于 `@orval/mock` 在解析 OpenAPI schema 的 `const` 类型属性时，未对属性值进行任何序列化或转义处理（如使用 `JSON.stringify`），而是直接将原始字符串赋值到生成的代码变量中。这使得攻击者可以通过精心构造的 `const` 值突破字符串边界，将恶意代码注入到生成的 TypeScript/JavaScript 文件中。",
+        "symptoms": [
+          "在 `packages/mock/src/faker/getters/scalar.ts` 文件的 `getMockScalar` 函数中，存在 `value = item.const;` 这样的直接赋值语句",
+          "受影响版本：`@orval/mock` 的 7.x (<7.20.0) 和 8.x (<8.0.3) 系列",
+          "生成的代码中包含未转义的单引号、分号或函数调用（如 `require('child_process')`）",
+          "当 Node.js 执行这些生成的 mock 代码时，会执行内嵌的任意命令"
+        ],
+        "related_exploit": [
+          "CommandInjection.OpenAPIConstUnescaped",
+          "RCE.GeneratedCode.UserControlledInput",
+          "TemplateInjection.Npm.OrvalMock"
+        ]
+      }
+    ],
+    "SecurityMisconfiguration": [
+      {
+        "name": "TrustedInputBoundaryFailure",
+        "pattern": "系统设计默认 OpenAPI 规范为可信输入，未对代码生成这种高风险操作实施输入隔离或严格验证。将来自外部的数据规格直接等同于可信任的内部代码模板参数。",
+        "symptoms": [
+          "工具文档或设计中未明确警告使用不可信 OpenAPI 源文件的风险",
+          "缺乏对输入 schema 中 `const`、`enum` 等字段值的内容安全策略（CSP）或转义开关",
+          "在持续集成（CI）流水线中自动化生成代码时，若规范源被篡改则直接引入风险"
+        ],
+        "related_exploit": [
+          "SupplyChainAttack.OpenAPISpecPoisoning",
+          "CI/CDIntegrationCompromise"
+        ]
+      }
+    ]
+  }
+}

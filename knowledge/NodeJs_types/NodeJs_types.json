@@ -1,0 +1,20 @@
+{
+  "ProtocolType": {
+    "CodeGenerator": [
+      {
+        "name": "NpmMockGenerator",
+        "category": "CodeGenerator",
+        "pattern": "根据 OpenAPI 规范自动生成前端 Mock 代码（包含 TypeScript 接口和 MSW 拦截器）的 npm 包。核心风险点在于将规范中的原始值（如 `const`、`enum`）直接、未经过滤地插值到生成的源代码中。",
+        "symptoms": [
+          "生成过程依赖并解析外部输入的 OpenAPI 规范文件（YAML/JSON）",
+          "生成的 `.ts` 或 `.js` 文件中直接包含来自规范的原始字符串值",
+          "当规范来自不可信来源时，可能将恶意字符串当作有效代码输出"
+        ],
+        "related_exploit": [
+          "CodeInjection.UnsanitizedTemplateInterpolation",
+          "CommandInjection.GeneratedCode"
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,191 @@
+{
+  "name": "NodeJsTypeRoot",
+  "category": "Base",
+  "children": [
+    {
+      "name": "Web应用",
+      "category": "NodeJsTypeRoot",
+      "pattern": "基于HTTP的应用程序，如Express、Koa框架",
+      "symptoms": ["HTTP服务器", "路由处理", "中间件", "模板渲染"],
+      "related_exploit": ["命令注入", "SSRF", "XSS", "SQL注入"],
+      "children": [
+        {
+          "name": "Express应用",
+          "category": "Web应用",
+          "pattern": "使用Express.js框架构建的Web应用",
+          "symptoms": ["app.use()中间件", "路由定义", "req/res对象", "模板引擎"],
+          "related_exploit": ["命令注入", "原型污染", "中间件劫持"]
+        },
+        {
+          "name": "Koa应用",
+          "category": "Web应用",
+          "pattern": "使用Koa.js框架构建的Web应用",
+          "symptoms": ["洋葱模型中间件", "async/await", "上下文对象", "错误处理"],
+          "related_exploit": ["上下文污染", "异步漏洞"]
+        }
+      ]
+    },
+    {
+      "name": "命令行工具",
+      "category": "NodeJsTypeRoot",
+      "pattern": "CLI应用程序，处理命令行参数",
+      "symptoms": ["参数解析", "文件操作", "进程管理", "用户输入"],
+      "related_exploit": ["命令注入", "路径遍历", "权限提升"],
+      "children": [
+        {
+          "name": "代码生成器",
+          "category": "命令行工具",
+          "pattern": "根据模板或规范生成代码的工具",
+          "symptoms": ["模板解析", "文件写入", "代码插值", "外部输入"],
+          "related_exploit": ["代码注入", "模板注入", "命令执行"],
+          "children": [
+            {
+              "name": "NpmMockGenerator",
+              "category": "代码生成器",
+              "pattern": "根据OpenAPI规范自动生成前端Mock代码的npm包",
+              "symptoms": [
+                "OpenAPI解析",
+                "const/enum值插值",
+                "TypeScript生成",
+                "直接拼接用户输入"
+              ],
+              "related_exploit": [
+                "CodeInjection.UnsanitizedTemplateInterpolation",
+                "CommandInjection.GeneratedCode"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "构建工具",
+          "category": "命令行工具",
+          "pattern": "项目构建和打包工具",
+          "symptoms": ["脚本执行", "依赖管理", "文件处理", "配置解析"],
+          "related_exploit": ["构建劫持", "依赖混淆"]
+        }
+      ]
+    },
+    {
+      "name": "API服务",
+      "category": "NodeJsTypeRoot",
+      "pattern": "RESTful或GraphQL API服务",
+      "symptoms": ["端点定义", "数据验证", "认证授权", "数据库操作"],
+      "related_exploit": ["认证绕过", "数据泄露", "DoS攻击"],
+      "children": [
+        {
+          "name": "REST API",
+          "category": "API服务",
+          "pattern": "基于REST架构的API服务",
+          "symptoms": ["HTTP方法", "状态码", "JSON响应", "资源路由"],
+          "related_exploit": ["IDOR", "API劫持"]
+        },
+        {
+          "name": "GraphQL服务",
+          "category": "API服务",
+          "pattern": "基于GraphQL的API服务",
+          "symptoms": ["查询解析", "模式定义", "解析函数", "数据加载"],
+          "related_exploit": ["GraphQL注入", "查询DoS"]
+        }
+      ]
+    },
+    {
+      "name": "数据库驱动",
+      "category": "NodeJsTypeRoot",
+      "pattern": "数据库连接和操作模块",
+      "symptoms": ["连接池", "查询构建", "事务管理", "结果映射"],
+      "related_exploit": ["SQL注入", "NoSQL注入", "连接池耗尽"],
+      "children": [
+        {
+          "name": "SQL数据库",
+          "category": "数据库驱动",
+          "pattern": "MySQL、PostgreSQL等SQL数据库驱动",
+          "symptoms": ["参数化查询", "连接字符串", "预处理语句"],
+          "related_exploit": ["SQL注入", "盲注攻击"]
+        },
+        {
+          "name": "NoSQL数据库",
+          "category": "数据库驱动",
+          "pattern": "MongoDB、Redis等NoSQL数据库驱动",
+          "symptoms": ["BSON操作", "查询构建器", "聚合管道"],
+          "related_exploit": ["NoSQL注入", "操作符滥用"]
+        }
+      ]
+    },
+    {
+      "name": "文件处理",
+      "category": "NodeJsTypeRoot",
+      "pattern": "文件系统操作相关模块",
+      "symptoms": ["文件读写", "路径解析", "目录遍历", "权限检查"],
+      "related_exploit": ["路径遍历", "任意文件读写", "目录穿越"],
+      "children": [
+        {
+          "name": "文件上传",
+          "category": "文件处理",
+          "pattern": "处理用户文件上传功能",
+          "symptoms": ["multer中间件", "文件验证", "存储路径", "MIME类型"],
+          "related_exploit": ["文件上传漏洞", "恶意文件执行"]
+        },
+        {
+          "name": "静态文件服务",
+          "category": "文件处理",
+          "pattern": "提供静态文件服务的功能",
+          "symptoms": ["express.static", "路径映射", "缓存控制"],
+          "related_exploit": ["目录遍历", "敏感文件泄露"]
+        }
+      ]
+    },
+    {
+      "name": "进程管理",
+      "category": "NodeJsTypeRoot",
+      "pattern": "子进程和系统命令执行相关",
+      "symptoms": ["child_process", "exec/spawn", "系统命令", "参数传递"],
+      "related_exploit": ["命令注入", "权限提升", "任意代码执行"],
+      "children": [
+        {
+          "name": "子进程模块",
+          "category": "进程管理",
+          "pattern": "使用child_process模块执行系统命令",
+          "symptoms": ["exec()调用", "spawn()调用", "用户输入拼接", "无参 数验证"],
+          "related_exploit": ["CommandInjection", "ArbitraryCodeExecution"]
+        }
+      ]
+    },
+    {
+      "name": "网络通信",
+      "category": "NodeJsTypeRoot",
+      "pattern": "网络套接字和协议处理",
+      "symptoms": ["Socket.io", "WebSocket", "TCP/UDP", "HTTP客户端"],
+      "related_exploit": ["WebSocket劫持", "协议漏洞", "中间人攻击"]
+    },
+    {
+      "name": "模板引擎",
+      "category": "NodeJsTypeRoot",
+      "pattern": "HTML/文本模板渲染引擎",
+      "symptoms": ["EJS/Pug/Handlebars", "变量插值", "模板继承", "过滤器/助手"],
+      "related_exploit": ["模板注入", "XSS攻击", "服务器端注入"]
+    },
+    {
+      "name": "安全相关",
+      "category": "NodeJsTypeRoot",
+      "pattern": "安全处理和加密相关模块",
+      "symptoms": ["bcrypt加密", "JWT令牌", "CORS配置", "安全头设置"],
+      "related_exploit": ["加密漏洞", "JWT篡改", "CORS滥用"],
+      "children": [
+        {
+          "name": "输入验证",
+          "category": "安全相关",
+          "pattern": "用户输入验证和过滤",
+          "symptoms": ["缺少验证", "弱类型检查", "未转义输出", "边界检查缺失"],
+          "related_exploit": ["原型污染", "命令注入", "路径遍历"]
+        },
+        {
+          "name": "配置管理",
+          "category": "安全相关",
+          "pattern": "应用配置和环境管理",
+          "symptoms": ["硬编码凭证", ".env泄露", "不安全默认值", "配置覆盖"],
+          "related_exploit": ["信息泄露", "配置篡改"]
+        }
+      ]
+    }
+  ]
+}

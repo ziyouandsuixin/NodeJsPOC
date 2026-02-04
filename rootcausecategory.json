@@ -1,0 +1,24 @@
+{
+  "name": "RootCauseRoot",
+  "category": "Base",
+  "children": [
+    {
+      "name": "输入验证缺失",
+      "category": "RootCauseRoot",
+      "pattern": "未对用户输入进行验证或清理",
+      "symptoms": ["直接使用用户输入", "缺少类型检查", "缺少长度限制"]
+    },
+    {
+      "name": "不安全配置",
+      "category": "RootCauseRoot",
+      "pattern": "使用了不安全的默认配置或API",
+      "symptoms": ["使用eval()", "使用不安全的函数", "默认权限过高"]
+    },
+    {
+      "name": "逻辑缺陷",
+      "category": "RootCauseRoot",
+      "pattern": "业务逻辑存在安全漏洞",
+      "symptoms": ["访问控制缺失", "竞态条件", "会话管理问题"]
+    }
+  ]
+}
