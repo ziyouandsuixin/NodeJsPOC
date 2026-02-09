@@ -1,18 +1,95 @@
 {
-  "ProtocolType": {
-    "CodeGenerator": [
+  "NodeJsSecurity": {
+    "Base": [
+      {
+        "name": "NpmPackages",
+        "category": "Base",
+        "pattern": "npm生态系统中的各种包，包含代码生成、构建工具、测试框架、Web框架等",
+        "symptoms": ["发布到npm registry的包", "包含package.json文件", "支持Node.js环境"],
+        "related_exploit": []
+      },
+      {
+        "name": "CodeGeneratorTools",
+        "category": "Base", 
+        "pattern": "根据配置文件（OpenAPI/Swagger/GraphQL等）自动生成代码的工具",
+        "symptoms": ["从规范文件生成代码", "支持模板渲染", "包含代码插值逻辑"],
+        "related_exploit": ["CodeInjection.UnsanitizedTemplateInterpolation"]
+      }
+    ],
+    
+    "NpmPackages": [
+      {
+        "name": "CodeGeneratorPackages",
+        "category": "NpmPackages",
+        "pattern": "专门用于代码生成的npm包",
+        "symptoms": ["生成代码文件", "依赖模板", "解析配置文件"],
+        "related_exploit": ["CodeInjection.UnsanitizedTemplateInterpolation"]
+      }
+    ],
+    
+    "CodeGeneratorTools": [
+      {
+        "name": "OpenAPICodeGenerators",
+        "category": "CodeGeneratorTools",
+        "pattern": "基于OpenAPI规范生成客户端/服务端代码的工具",
+        "symptoms": [
+          "解析OpenAPI YAML/JSON文件",
+          "使用模板生成目标语言代码",
+          "支持const、enum等OpenAPI特性",
+          "包含字符串插值和代码拼接"
+        ],
+        "related_exploit": ["InputValidationFlaw.OpenAPIConstValue"]
+      }
+    ],
+    
+    "CodeGeneratorPackages": [
       {
         "name": "NpmMockGenerator",
-        "category": "CodeGenerator",
-        "pattern": "根据 OpenAPI 规范自动生成前端 Mock 代码（包含 TypeScript 接口和 MSW 拦截器）的 npm 包。核心风险点在于将规范中的原始值（如 `const`、`enum`）直接、未经过滤地插值到生成的源代码中。",
+        "category": "CodeGeneratorPackages",
+        "pattern": "生成mock代码的npm包，用于测试和开发",
         "symptoms": [
-          "生成过程依赖并解析外部输入的 OpenAPI 规范文件（YAML/JSON）",
-          "生成的 `.ts` 或 `.js` 文件中直接包含来自规范的原始字符串值",
-          "当规范来自不可信来源时，可能将恶意字符串当作有效代码输出"
+          "从API规范生成模拟数据",
+          "创建测试用的mock服务",
+          "生成TypeScript/JavaScript代码"
+        ],
+        "related_exploit": ["CommandInjection.TemplateInterpolation"]
+      }
+    ],
+    
+    "NpmMockGenerator": [
+      {
+        "name": "@orval/mock CommandInjection",
+        "category": "NpmMockGenerator",
+        "pattern": "@orval/mock 解析 OpenAPI schema 的 `const` 类型属性时，未对值做序列化/转义，直接插值到生成的 TypeScript 代码中，依赖输入的可信性实现代码生成安全",
+        "symptoms": [
+          "项目使用 @orval/mock 7.x<7.20.0 或 8.0.0-rc.0<8.0.3 版本生成 mock 代码",
+          "OpenAPI 规范中包含 `const` 字段，且该字段值直接出现在生成的 .ts/.js 文件中",
+          "生成 mock 代码时依赖第三方/不可信来源的 OpenAPI 规范文件",
+          "重点关注 CommandInjection.TemplateInterpolation 漏洞类型",
+          "可能会因为 UnsanitizedConstValue 从而引起代码注入，可关注是否出现 `const` 值未转义直接拼接的情况"
         ],
         "related_exploit": [
           "CodeInjection.UnsanitizedTemplateInterpolation",
-          "CommandInjection.GeneratedCode"
+          "CommandInjection.Nodejs.ChildProcessAbuse",
+          "InputValidationFlaw.OpenAPIConstValue",
+          "RemoteCodeExecution.GeneratedCodeInjection"
+        ]
+      }
+    ],
+    
+    "OpenAPICodeGenerators": [
+      {
+        "name": "OrvalMockGeneratorVulnerability",
+        "category": "OpenAPICodeGenerators",
+        "pattern": "OpenAPI代码生成器在处理const字段时的漏洞模式",
+        "symptoms": [
+          "直接拼接const值到生成的代码中",
+          "缺乏输入验证和转义机制",
+          "依赖外部输入的信任模型"
+        ],
+        "related_exploit": [
+          "TemplateInjection.OpenAPIConst",
+          "CodeInjection.UntrustedInput"
         ]
       }
     ]
