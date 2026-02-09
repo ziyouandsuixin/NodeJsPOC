@@ -37,9 +37,48 @@ class POCVerifierAgent:
 
 请你严格按照以下步骤进行分析：
 
-输出结构化报告（严格 JSON）：
-{{
+1. 环境初始化分析
+- 识别 PoC 中使用的包、版本、配置文件
+- 分析初始环境设置（工作目录、依赖安装、文件结构）
 
+2. 代码执行模拟
+- 按照 PoC 的执行顺序，逐步模拟每个函数调用或命令执行
+- 对每一步说明：执行的操作、关键参数、预期结果
+
+3. 漏洞触发路径验证
+- 分析 PoC 是否创建了正确的恶意输入
+- 验证漏洞触发点（如：未转义的 const 值、命令注入点）
+- 检查是否存在安全绕过或验证缺失
+
+4. 系统交互分析
+- 分析 child_process、fs、http 等模块的使用
+- 验证系统命令执行或文件操作的可达性
+- 检查权限提升或数据泄露路径
+
+5. 输出要求
+你必须输出一个严格的 JSON 对象，格式如下：
+{{
+  "environment_analysis": {{
+    "packages_used": ["包名@版本"],
+    "initial_state": "环境设置描述",
+    "file_structure": "文件结构描述"
+  }},
+  "execution_trace": [
+    {{"step": 1, "operation": "命令或函数", "parameters": "参数", "expected_result": "预期结果"}}
+  ],
+  "vulnerability_trigger_check": {{
+    "malicious_input_created": true/false,
+    "trigger_point_reached": true/false,
+    "vulnerability_location": "漏洞位置（如：文件:行号）"
+  }},
+  "system_interaction_analysis": {{
+    "command_execution": true/false,
+    "file_operations": true/false,
+    "network_access": true/false
+  }},
+  "vulnerability_triggered": true/false,
+  "reasoning_summary": "简要说明漏洞可达或不可达的原因",
+  "recommendations": ["安全建议1", "安全建议2"]
 }}
 
 注意：  

@@ -679,7 +679,7 @@ def analyze_js_from_content(content: str, filename: str) -> Dict:  # 改为analy
 
 if __name__ == "__main__":
     # 修改为Node.js代码目录
-    js_dir = "D:\Projects\\25security\\v1\js_examples\orval"  # 假设有js_examples目录
+    js_dir = "D:\Projects\\25security\\NodeJsPOC\js_examples\orval"  # 假设有js_examples目录
     
     # 找出文件夹下所有 .js 文件
     js_files = [f for f in os.listdir(js_dir) if f.endswith(".js")]  # 改为.js
