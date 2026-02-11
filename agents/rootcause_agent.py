@@ -28,6 +28,7 @@ class RootCauseAgent:
 这些关键词将用于在 RootCause 知识库中检索。
 
 要求：
+1、关键词为英文，符合PascalCase命名法
 
 Node.js信息：
 {NodeJs_type}

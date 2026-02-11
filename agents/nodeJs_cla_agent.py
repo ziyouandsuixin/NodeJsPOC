@@ -27,6 +27,7 @@ class NodeJsClassifierAgent:
 你是一名Node.js生态漏洞挖掘与利用专家。请阅读以下js_code.json文件，总结出用于描述其安全风险的关键词。
 
 要求：
+1、关键词为英文，符合PascalCase命名法
 
 Node.js代码:
 {js_code}
