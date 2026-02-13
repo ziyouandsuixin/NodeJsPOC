@@ -1,3 +1,8 @@
+"""
+Node.js代码安全分析协调器
+负责协调多个Agent完成完整的代码安全分析流程
+"""
+
 import logging
 from openai import OpenAI
 from typing import Dict, List, Any
@@ -30,12 +35,80 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+
+class PackageFilteredRAGManager(RAGManager):
+    """支持按包名过滤的RAG管理器 - 只在展示层过滤，不在检索层过滤"""
+    
+    def __init__(self):
+        super().__init__()
+        self.package_context = None
+    
+    def set_package_context(self, package_name: str):
+        """设置当前分析的包名上下文"""
+        self.package_context = package_name
+        logger.info(f"🔒 设置包名上下文: {package_name}")
+    
+    def clear_package_context(self):
+        """清除包名上下文"""
+        self.package_context = None
+    
+    @property
+    def retriever_NodeJs(self):
+        """返回Node.js检索器 - 不做包名过滤"""
+        return super().retriever_NodeJs
+    
+    @property
+    def retriever_rootcause(self):
+        """返回根因检索器 - 不做包名过滤"""
+        return super().retriever_rootcause
+    
+    @property
+    def retriever_exploit(self):
+        """返回利用步骤检索器 - 不做包名过滤"""
+        return super().retriever_exploit
+
+
+def detect_package_from_code(js_code: str) -> str:
+    """
+    从JavaScript/TypeScript代码中检测所属的npm包名
+    """
+    # 优先级1: 从文件注释中检测 @description 或 @file 中的包名
+    description_match = re.search(r'@(?:description|file).*?@?([a-zA-Z0-9@/\-]+/inspector)', js_code, re.IGNORECASE)
+    if description_match:
+        pkg = description_match.group(1)
+        if 'mcpjam' in pkg or 'inspector' in pkg:
+            return "@mcpjam/inspector"
+    
+    # 优先级2: 检测 import/require 中的包名
+    import_match = re.search(r'(?:import|require)\s*\(?\s*[\'"]@?mcpjam/inspector[\'"]', js_code)
+    if import_match:
+        return "@mcpjam/inspector"
+    
+    import_match = re.search(r'(?:import|require)\s*\(?\s*[\'"]@?orval/mock[\'"]', js_code)
+    if import_match:
+        return "@orval/mock"
+    
+    # 优先级3: 检测路由端点
+    if '/api/mcp/connect' in js_code and 'inspector' in js_code.lower():
+        return "@mcpjam/inspector"
+    
+    # 优先级4: 检测命令行特征
+    if 'npx @mcpjam/inspector' in js_code or '6274' in js_code:
+        return "@mcpjam/inspector"
+    
+    if 'orval' in js_code.lower() and 'mock' in js_code.lower():
+        return "@orval/mock"
+    
+    # 默认返回None，表示不进行包过滤
+    return None
+
+
 class AnalysisCoordinator:
     def __init__(self):
-        # 初始化检索器
-        self.rag = RAGManager()
-
-        # 使用全局 retriever
+        # 使用支持包过滤的RAG管理器
+        self.rag = PackageFilteredRAGManager()
+        
+        # 注意：retriever属性在set_package_context之后才真正生效
         self.retriever_NodeJs = self.rag.retriever_NodeJs
         self.retriever_rootcause = self.rag.retriever_rootcause
         self.retriever_exploit = self.rag.retriever_exploit
@@ -46,6 +119,8 @@ class AnalysisCoordinator:
         self.exploit_agent = ExploitAgent(self.retriever_exploit)
         self.poc_verifier = POCVerifierAgent()
         self.poc_validator = POCValidatorAgent()
+        
+        self.current_package = None
 
     def full_analysis(self, js_sources: Dict[str, str]) -> Dict:
         """
@@ -56,6 +131,16 @@ class AnalysisCoordinator:
             f"// File: {filename}\n{code}" 
             for filename, code in js_sources.items()
         )
+        
+        # ========== 0. 包名检测 ==========
+        self.current_package = detect_package_from_code(js_code)
+        if self.current_package:
+            print(f"\n📦 检测到包名: {self.current_package}")
+            # 设置RAG上下文，只用于记录，不用于过滤
+            self.rag.set_package_context(self.current_package)
+            # 不刷新代理的检索器，保持无过滤状态
+        else:
+            print("\n🌐 未检测到特定包名，执行全量检索")
         
         print("\n" + "="*80)
         print("🚀 Node.js安全分析开始")
@@ -68,7 +153,6 @@ class AnalysisCoordinator:
         print("\n📦 阶段1: Node.js组件分类")
         nodejs_res = self.nodejs_classifier.classify(js_code, hierarchy_str)
         
-        # 🔴 修复点1: 将 retrieved_NodeJs 改为 retriever_NodeJs (与agent返回的键名一致)
         retriever_NodeJs = nodejs_res.get("retriever_NodeJs", [])
         keyword_data = nodejs_res.get("analysis", {})
         nodejs_keywords = keyword_data.get("NodeJsType_keywords", [])
@@ -76,7 +160,6 @@ class AnalysisCoordinator:
         print(f"   ✅ 提取关键词: {', '.join(nodejs_keywords[:5])}{'...' if len(nodejs_keywords) > 5 else ''}")
         print(f"   📚 RAG命中: {len(retriever_NodeJs)} 条相关Node.js知识")
         
-        # 显示命中的具体条目
         if retriever_NodeJs:
             print(f"   📋 命中的组件:")
             for i, doc in enumerate(retriever_NodeJs[:3]):
@@ -91,7 +174,7 @@ class AnalysisCoordinator:
         # ========== 2. 根因分析 ==========
         print("\n🔬 阶段2: 漏洞根因分析")
         rootcause_res = self.rootcause_agent.find_rootcauses_and_audit(
-            NodeJs_type=retriever_NodeJs,  # 🔴 修复点2: 参数名保持一致
+            NodeJs_type=retriever_NodeJs,
             js_code=js_code
         )
         
@@ -100,9 +183,15 @@ class AnalysisCoordinator:
         confidence = final_vuln.get("confidence_level", "未知")
         location = final_vuln.get("location", "未知")
         
+        # 将包名注入到final_vulnerability中
+        if self.current_package and "package" not in final_vuln:
+            final_vuln["package"] = self.current_package
+        
         print(f"   🎯 识别漏洞: {vuln_name}")
         print(f"   📊 置信度: {confidence}")
         print(f"   📍 漏洞位置: {location}")
+        if self.current_package:
+            print(f"   📦 所属包: {self.current_package}")
         
         retrieved_rootcauses = rootcause_res.get("retrieved_rootcauses", [])
         print(f"   📚 根因知识命中: {len(retrieved_rootcauses)} 条")
@@ -145,14 +234,14 @@ class AnalysisCoordinator:
         print("\n📊 阶段5: 可视化数据构建")
         retrieved_detailed_steps = sort_steps_by_category(exploit_res.get("retrieved_detailed_steps", {}))
         
-        # 🔴 修复点3: 传递 retriever_NodeJs 而不是 nodejs_paths
         graph_data = build_tree_data(
-            {},  # nodejs_paths参数保留为空字典，因为不再使用路径查找
-            retriever_NodeJs,  # 🔴 改为 retriever_NodeJs
+            {},  # nodejs_paths参数保留为空字典，兼容旧接口
+            retriever_NodeJs,
             rootcause_res.get("retrieved_rootcauses", {}),
             rootcause_res.get("final_vulnerability", {}).get("vulnerability_name", {}),
             retrieved_detailed_steps,
-            rootcause_res.get("summar", {})
+            rootcause_res.get("summar", {}),
+            current_package=self.current_package  # 传入当前包名，用于图过滤
         )
         
         print(f"   🎨 图节点数: {len(graph_data.get('visualization_data', {}).get('nodes', []))}")
@@ -161,6 +250,9 @@ class AnalysisCoordinator:
         print("\n" + "="*80)
         print("✅ Node.js安全分析完成")
         print("="*80 + "\n")
+        
+        # 清除包名上下文
+        self.rag.clear_package_context()
 
         return {
             "nodejs_analysis": nodejs_res,
@@ -173,8 +265,8 @@ class AnalysisCoordinator:
 
 class KnowledgeCoordinator:
     def __init__(self):
-        # 初始化检索器
-        self.rag = RAGManager()
+        # 使用支持包过滤的RAG管理器
+        self.rag = PackageFilteredRAGManager()
         self.retriever_NodeJs = self.rag.retriever_NodeJs
         self.retriever_rootcause = self.rag.retriever_rootcause
         self.retriever_exploit = self.rag.retriever_exploit
@@ -185,6 +277,8 @@ class KnowledgeCoordinator:
         self.exploit_agent = ExploitAgent(self.retriever_exploit)
         self.poc_verifier = POCVerifierAgent()
         self.poc_validator = POCValidatorAgent()
+        
+        self.current_package = None
 
     def full_analysis(self, js_sources: Dict[str, str], poc_code: str = None) -> Dict:
         """
@@ -195,12 +289,18 @@ class KnowledgeCoordinator:
             f"// File: {filename}\n{code}"
             for filename, code in js_sources.items()
         )
+        
+        # ========== 包名检测 ==========
+        self.current_package = detect_package_from_code(js_code)
+        if self.current_package:
+            logger.info(f"📦 检测到包名: {self.current_package}")
+            self.rag.set_package_context(self.current_package)
+            # 不刷新代理的检索器，保持无过滤状态
 
         # 加载Node.js类型层次结构
         hierarchy_str = self.rag.get_hierarchy()
         nodejs_res = self.nodejs_classifier.classify(js_code, hierarchy_str)
         
-        # 🔴 修复点4: 统一使用 retriever_NodeJs
         retriever_NodeJs = nodejs_res.get("retriever_NodeJs", [])
 
         keyword_data = nodejs_res.get("analysis", {})
@@ -209,18 +309,21 @@ class KnowledgeCoordinator:
 
         # 根因分析
         rootcause_res = self.rootcause_agent.find_rootcauses_and_audit(
-            NodeJs_type=retriever_NodeJs,  # 🔴 修复点5
+            NodeJs_type=retriever_NodeJs,
             js_code=js_code
         )
+        
+        # 将包名注入到final_vulnerability
+        final_vuln = rootcause_res.get("final_vulnerability", {})
+        if self.current_package and "package" not in final_vuln:
+            final_vuln["package"] = self.current_package
 
         rootcause_category = load_rootcause_categories("rootcausecategory.json")
         logging.info("[Coordinator] 开始POC验证...")
 
-        final_vuln = rootcause_res.get("final_vulnerability", {})
-
         # 调用 POC 验证
         is_matched, new_analysis = self.poc_validator.validate_poc_exploit(
-            retriever_NodeJs=retriever_NodeJs,  # 🔴 修复点6
+            retriever_NodeJs=retriever_NodeJs,
             NodeJstype_summary=NodeJstype_summary,
             js_code=js_code,
             poc_code=poc_code,
@@ -245,7 +348,8 @@ class KnowledgeCoordinator:
                 "reason": final_vuln.get("reason"),
                 "location": final_vuln.get("location"),
                 "trigger_point": final_vuln.get("trigger_point"),
-                "code_snippet": final_vuln.get("code_snippet", "")
+                "code_snippet": final_vuln.get("code_snippet", ""),
+                "package": final_vuln.get("package", self.current_package)
             }
             response_data["poc_validation"] = {
                 "original_matched": True,
@@ -280,6 +384,9 @@ class KnowledgeCoordinator:
                     "reasoning": "POC未利用当前分析漏洞，且未生成新的扩充分析。",
                     "exploited_vulnerability": None
                 }
+        
+        # 清除包名上下文
+        self.rag.clear_package_context()
 
         return response_data
 
@@ -337,16 +444,37 @@ def sort_steps_by_category(retrieved_detailed_steps):
     return [step['original'] for step in sorted_steps]
 
 
+def extract_package_from_doc(doc: str) -> str:
+    """从文档字符串中提取包名"""
+    if isinstance(doc, dict):
+        return doc.get("package", "")
+    
+    # 字符串格式
+    package_match = re.search(r"package: ([^\n]+)", doc)
+    if package_match:
+        return package_match.group(1).strip()
+    
+    # 兼容旧数据
+    if "mcpjam" in doc.lower() or "inspector" in doc.lower():
+        return "@mcpjam/inspector"
+    if "orval" in doc.lower():
+        return "@orval/mock"
+    
+    return None
+
+
 def build_tree_data(
     nodejs_paths,
-    retriever_NodeJs=None,  # 🔴 修复点7: 参数名改为 retriever_NodeJs
+    retriever_NodeJs=None,
     retrieved_rootcauses=None,
     vulnerablename=None,
     detailed_steps=None,
-    rootcausequery=None
+    rootcausequery=None,
+    current_package=None  # 新增参数：当前分析的包名
 ):
     """
     构建可前端识别的图结构
+    只处理与当前包名相关的节点
     """
     nodes, edges, node_cache = [], [], {}
 
@@ -370,36 +498,46 @@ def build_tree_data(
 
     # 提取 retriever_NodeJs 信息
     nodejs_name_to_pattern = {}
+    nodejs_name_to_package = {}
     if retriever_NodeJs:
         for p in retriever_NodeJs:
             name_match = re.search(r"Name: (.+?)(?:\n|$)", p)
             pattern_match = re.search(r"Pattern: (.+?)(?:\n|$)", p)
+            package = extract_package_from_doc(p)
+            
             if name_match and pattern_match:
                 name = name_match.group(1).strip()
                 pattern = pattern_match.group(1).strip()
                 nodejs_name_to_pattern[name] = pattern
+                if package:
+                    nodejs_name_to_package[name] = package
 
-    # 提取 retrieved_rootcauses 信息 - 修复JSON解析错误
+    # 提取 retrieved_rootcauses 信息
     rootcause_name_to_pattern = {}
+    rootcause_name_to_package = {}
     if retrieved_rootcauses:
         for rc in retrieved_rootcauses:
-            # 🔴 修复点8: 先检查是否为JSON格式
             if isinstance(rc, str) and rc.strip().startswith('{'):
                 try:
                     data = json.loads(rc)
                     name = data.get("name", "未知")
                     pattern = data.get("pattern", "无模式描述")
+                    package = data.get("package")
                     rootcause_name_to_pattern[name] = pattern
-                except Exception as e:
-                    print(f"   ⚠️ 解析根因失败 (非JSON格式): {e}")
+                    if package:
+                        rootcause_name_to_package[name] = package
+                except Exception:
+                    pass
             else:
-                # 如果是纯文本，尝试用正则提取
                 name_match = re.search(r"Name: (.+?)(?:\n|$)", rc)
                 pattern_match = re.search(r"Pattern: (.+?)(?:\n|$)", rc)
+                package = extract_package_from_doc(rc)
                 if name_match and pattern_match:
                     name = name_match.group(1).strip()
                     pattern = pattern_match.group(1).strip()
                     rootcause_name_to_pattern[name] = pattern
+                    if package:
+                        rootcause_name_to_package[name] = package
 
     # 提取 detailed_steps 信息
     step_name_to_impact = {}
@@ -420,14 +558,22 @@ def build_tree_data(
         elif name in step_name_to_impact:
             node["description"] = step_name_to_impact[name]
 
-    # 将 retriever_NodeJs 建立对应关系
+    # 构建节点关联关系 - 只处理属于当前包的节点
     if retriever_NodeJs:
         for nodejs_info in retriever_NodeJs:
             name_match = re.search(r"Name: (.+?)(?:\n|$)", nodejs_info)
             related_exploit_match = re.search(r"Related Exploit: (.+?)(?:\n|$)", nodejs_info)
+            package = extract_package_from_doc(nodejs_info)
+            
+            # 如果指定了当前包，跳过其他包的节点
+            if current_package and package and package != current_package:
+                continue
+                
             if not name_match:
                 continue
+                
             nodejs_name = name_match.group(1).strip()
+            
             if related_exploit_match:
                 exploits = [e.strip() for e in related_exploit_match.group(1).split(",")]
                 for exp in exploits:
@@ -442,26 +588,54 @@ def build_tree_data(
                         exp_node = add_node(exp, "rootcause", f"漏洞利用: {exp}")
                         add_edge(add_node(nodejs_name, "nodejs_type"), exp_node)
 
-    # 检查哪些 rootcauses 缺失，若有 → 建立"思维杂糅"节点
+    # 🔒 按包名过滤缺失根因 - 只处理与当前包相关的
     missing_rootcauses = []
     for rc_name in rootcause_name_to_pattern:
-        if rc_name not in node_cache:
-            missing_rootcauses.append(rc_name)
+        rc_package = rootcause_name_to_package.get(rc_name)
+        
+        # 如果没有指定当前包，或者根因属于当前包，或者是通用根因（无包名）
+        if not current_package:
+            if rc_name not in node_cache:
+                missing_rootcauses.append(rc_name)
+        else:
+            # 指定了包名：只处理同包的根因
+            if rc_package == current_package and rc_name not in node_cache:
+                missing_rootcauses.append(rc_name)
+            # 或者根因没有包名但明显与当前漏洞相关（通过漏洞名称匹配）
+            elif not rc_package and vulnerablename and vulnerablename.lower() in rc_name.lower():
+                if rc_name not in node_cache:
+                    missing_rootcauses.append(rc_name)
 
     if missing_rootcauses:
         complex_node = add_node("complex", "complex",
-                                rootcausequery or "Node.js应用复合问题分析")
+                                rootcausequery or f"{current_package or 'Node.js'}应用复合问题分析")
         for rc_name in missing_rootcauses:
             rc_node = add_node(rc_name, "rootcause", rootcause_name_to_pattern.get(rc_name, "未定义描述"))
             add_edge(complex_node, rc_node)
 
-    # 若 vulnerablename 存在步骤，则按顺序连线
+    # 攻击步骤连线 - 只处理当前漏洞的步骤
+    # 攻击步骤连线 - 只处理当前漏洞的步骤
     if vulnerablename and detailed_steps and vulnerablename in node_cache:
         target_node = node_cache[vulnerablename]
         prev_node = None
         for step_info in detailed_steps:
             name_match = re.search(r"Name: (.+?)(?:\n|$)", step_info)
             impact_match = re.search(r"Impact: (.+?)(?:\n|$)", step_info)
+            
+            # ========== 🔴 新增：按包名过滤攻击步骤 ==========
+            # 检查步骤是否属于当前包
+            applicable_match = re.search(r"applicable_to: \[([^\]]+)\]", step_info)
+            if applicable_match and current_package:
+                applicable_str = applicable_match.group(1)
+                # 如果不是通用步骤，也不属于当前包，就跳过
+                if '"*"' not in applicable_str and "'*'" not in applicable_str:
+                    if f'"{current_package}"' not in applicable_str and f"'{current_package}'" not in applicable_str:
+                        # 兼容无@符号
+                        pkg_without_at = current_package.replace('@', '')
+                        if f'"{pkg_without_at}"' not in applicable_str and f"'{pkg_without_at}'" not in applicable_str:
+                            continue
+            # ========== 🔴 新增结束 ==========
+            
             if name_match and impact_match:
                 step_name = name_match.group(1).strip()
                 step_impact = impact_match.group(1).strip()
@@ -504,13 +678,24 @@ def save_results_to_file(result: Dict, module_name: str) -> Path:
         f.write(f"**模块名称**: {module_name}\n")
         f.write(f"**分析时间**: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
         
+        # 提取包名信息（如果有）
+        package_name = None
+        if "rootcause_analysis" in result:
+            final_vuln = result["rootcause_analysis"].get("final_vulnerability", {})
+            package_name = final_vuln.get("package")
+        
+        if package_name:
+            f.write(f"**分析包**: {package_name}\n\n")
+        
         # Node.js类型分析
         nodejs_res = result["nodejs_analysis"]
         f.write("## Node.js类型分析\n")
         f.write(f"**类型摘要**: {nodejs_res.get('analysis', {}).get('summary', '无摘要')}\n\n")
         f.write("**相关Node.js类型**:\n")
-        for nodejs_type in nodejs_res.get("retriever_NodeJs", []):  # 🔴 修复点9
-            f.write(f"- {nodejs_type}\n")
+        for nodejs_type in nodejs_res.get("retriever_NodeJs", []):
+            # 截断过长的内容
+            short_type = nodejs_type[:200] + "..." if len(nodejs_type) > 200 else nodejs_type
+            f.write(f"- {short_type}\n")
         f.write("\n")
         
         # 根因分析
@@ -518,13 +703,16 @@ def save_results_to_file(result: Dict, module_name: str) -> Path:
         f.write("## 根因分析\n")
         f.write("**匹配到的根因条目**:\n")
         for entry in rootcause_res.get("retrieved_rootcauses", []):
-            f.write(f"- {entry}\n")
+            short_entry = entry[:200] + "..." if len(entry) > 200 else entry
+            f.write(f"- {short_entry}\n")
         f.write("\n")
 
         # 漏洞摘要
         vuln_info = result["rootcause_analysis"].get("final_vulnerability", {})
         f.write("## 漏洞摘要\n")
         f.write(f"**漏洞名称**: {vuln_info.get('vulnerability_name', '未知')}\n\n")
+        if package_name:
+            f.write(f"**受影响包**: {package_name}\n\n")
         f.write(f"**漏洞描述**:\n{vuln_info.get('reason', '无描述')}\n\n")
         f.write(f"**漏洞位置**: {vuln_info.get('location', '未知')}\n\n")
         f.write(f"**关键代码片段**:\n```javascript\n{vuln_info.get('code_snippet', '无')}\n```\n\n")
@@ -545,11 +733,11 @@ def save_results_to_file(result: Dict, module_name: str) -> Path:
                 poc_file.write(poc_code)
             f.write(f"**POC代码**: 已保存到 [exploit_poc.js]({poc_path.name})\n\n")
         
-        # POC可达性报告 - 🔴 修复点10: 修复字段映射
+        # POC可达性报告
         reachability = result["poc_reachability_report"]
         f.write("## POC可达性验证\n")
         f.write(f"**漏洞是否可达**: {'是' if reachability.get('vulnerability_triggered', False) else '否'}\n\n")
-        f.write(f"**触发点**: {vuln_info.get('trigger_point', '未知')}\n\n")  # 🔴 从vuln_info获取
+        f.write(f"**触发点**: {vuln_info.get('trigger_point', '未知')}\n\n")
         f.write(f"**原因摘要**: {reachability.get('reasoning_summary', '无摘要')}\n\n")
         f.write("**执行跟踪**:\n")
         for i, step in enumerate(reachability.get("execution_trace", []), 1):
@@ -557,6 +745,14 @@ def save_results_to_file(result: Dict, module_name: str) -> Path:
             params = step.get('parameters', step.get('state_change', ''))
             f.write(f"- 步骤 {i}: {operation} -> {params}\n")
         f.write("\n")
+        
+        # 修复建议
+        recommendations = reachability.get("recommendations", [])
+        if recommendations:
+            f.write("## 修复建议\n")
+            for i, rec in enumerate(recommendations, 1):
+                f.write(f"{i}. {rec}\n")
+            f.write("\n")
         
         # 结论
         f.write("## 结论\n")
@@ -595,15 +791,76 @@ def analyze_js_from_content(content: str, filename: str) -> Dict:
     return result
 
 
+def debug_vectorstore():
+    """调试：查看向量库是否包含 @mcpjam/inspector 的文档"""
+    import os
+    from rag.rag_manager import RAGManager
+    from main import PackageFilteredRAGManager
+    from pathlib import Path
+    
+    print("\n🔍 调试：检查向量库状态")
+    
+    # 1. 检查向量库目录
+    vectorstore_path = Path("./vectorstore")
+    if vectorstore_path.exists():
+        print(f"   ✅ 向量库目录存在: {vectorstore_path.absolute()}")
+        for subdir in ['NodeJs', 'rootcause', 'exploit']:
+            sub_path = vectorstore_path / subdir
+            if sub_path.exists():
+                faiss_files = list(sub_path.glob("*.faiss"))
+                pkl_files = list(sub_path.glob("*.pkl"))
+                print(f"      - {subdir}: {len(faiss_files)} .faiss, {len(pkl_files)} .pkl")
+    else:
+        print(f"   ❌ 向量库目录不存在: {vectorstore_path.absolute()}")
+    
+    # 2. 尝试检索 @mcpjam/inspector
+    try:
+        # 使用子类但不设置包名上下文，检索所有文档
+        rag = PackageFilteredRAGManager()
+        
+        # 检查 rootcause 检索器
+        if rag._retriever_rootcause:
+            print(f"   ✅ rootcause 检索器已初始化")
+            
+            if hasattr(rag._retriever_rootcause, 'vectorstore'):
+                docs = rag._retriever_rootcause.vectorstore.similarity_search(
+                    "@mcpjam/inspector 命令注入", 
+                    k=5
+                )
+                print(f"   📚 检索到 {len(docs)} 条 rootcause 文档")
+                for i, doc in enumerate(docs[:3]):
+                    content = doc.page_content
+                    preview = content.replace('\n', ' ')[:100]
+                    print(f"      [{i+1}] {preview}...")
+            else:
+                print(f"   ❌ 检索器没有 vectorstore 属性")
+        else:
+            print(f"   ❌ rootcause 检索器未初始化")
+            
+    except Exception as e:
+        print(f"   ❌ 调试出错: {e}")
+        import traceback
+        traceback.print_exc()
+
+
 if __name__ == "__main__":
-    # Node.js代码目录
-    js_dir = "D:\\Projects\\25security\\NodeJsPOC\\js_examples\\orval"
+    import sys
+    
+    # 调试向量库
+    debug_vectorstore()
+    
+    # 支持命令行参数
+    if len(sys.argv) > 1:
+        js_dir = sys.argv[1]
+    else:
+        # 默认路径
+        js_dir = "D:\\Projects\\25security\\NodeJsPOC\\js_examples\\orval"
     
     # 找出所有.js文件
-    js_files = [f for f in os.listdir(js_dir) if f.endswith(".js")]
+    js_files = [f for f in os.listdir(js_dir) if f.endswith(".js") or f.endswith(".ts")]
 
     if len(js_files) == 0:
-        raise FileNotFoundError(f"在 {js_dir} 下没有找到任何 .js 文件")
+        raise FileNotFoundError(f"在 {js_dir} 下没有找到任何 .js 或 .ts 文件")
 
     js_sources = {}
     for filename in js_files:
@@ -617,7 +874,3 @@ if __name__ == "__main__":
     # 保存结果
     output_dir = save_results_to_file(result, "NodeJsAnalysis")
     print(f"\n📁 分析报告已保存到: {output_dir}")
-    
-    # 可选：打印完整JSON
-    # print("\n==== Node.js模块类型 & RootCause 综合分析 ====\n", 
-    #       json.dumps(result, ensure_ascii=False, indent=2))

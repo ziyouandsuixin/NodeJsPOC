@@ -24,6 +24,17 @@
         "pattern": "专门用于代码生成的npm包",
         "symptoms": ["生成代码文件", "依赖模板", "解析配置文件"],
         "related_exploit": ["CodeInjection.UnsanitizedTemplateInterpolation"]
+      },
+      {
+        "name": "WebFrameworkPackages",
+        "category": "NpmPackages",
+        "pattern": "提供HTTP服务、路由、中间件功能的npm包",
+        "symptoms": ["创建HTTP服务器", "定义路由", "处理请求响应", "提供调试接口"],
+        "related_exploit": [
+          "CommandInjection.UnauthenticatedHTTP",
+          "AuthenticationFlaw.MissingForCriticalAPI",
+          "InsecureDefaultConfig.PublicNetworkExposure"
+        ]
       }
     ],
     
@@ -90,6 +101,48 @@
         "related_exploit": [
           "TemplateInjection.OpenAPIConst",
           "CodeInjection.UntrustedInput"
+        ]
+      }
+    ],
+
+    "WebFrameworkPackages": [
+      {
+        "name": "@mcpjam/inspector",
+        "category": "WebFrameworkPackages",
+        "pattern": "MCP调试与检查工具，提供HTTP接口用于服务诊断和管理",
+        "symptoms": [
+          "默认监听0.0.0.0:6274",
+          "提供/api/mcp/connect等调试接口",
+          "用于连接和管理MCP服务器实例"
+        ],
+        "related_exploit": [
+          "InsecureDefaultConfig.PublicNetworkExposure",
+          "AuthenticationFlaw.MissingForCriticalAPI"
+        ]
+      }
+    ],
+
+    "@mcpjam/inspector": [
+      {
+        "name": "@mcpjam/inspector Unauthenticated RCE via Command Injection",
+        "category": "1. 注入类",
+        "package": "@mcpjam/inspector",
+        "affected_versions": "≤1.4.2",
+        "cve": "CVE-2026-23744",
+        "pattern": "@mcpjam/inspector 存在“无认证+命令注入”叠加漏洞：默认监听 0.0.0.0 使接口远程可访问，核心接口 /api/mcp/connect 无身份验证，且直接提取用户可控的 command/args 执行系统命令，恶意 HTTP 请求可注入任意命令，无需用户交互即可触发远程代码执行，依赖“认证校验+命令白名单”双重防护",
+        "symptoms": [
+          "项目使用 @mcpjam/inspector 版本 ≤1.4.2（含1.4.0-1.4.2）",
+          "启动服务后，通过 `netstat -an | findstr 6274` 可看到监听地址为 0.0.0.0:6274（而非127.0.0.1）",
+          "向 /api/mcp/connect 发送含 `command: cmd.exe`、`args: [/c, calc]` 的 POST 请求，目标主机弹出计算器（Windows）或执行对应命令（Linux）",
+          "核心代码中存在 `hostname: \"0.0.0.0\"` 的监听配置，且 /api/mcp/connect 接口无 token/密码校验逻辑",
+          "执行命令无白名单限制，可注入 `whoami`、`ls`、`rm -rf /` 等任意系统命令"
+        ],
+        "related_exploit": [
+          "CommandInjection.UnauthenticatedHTTP",
+          "RCE.NoUserInteraction",
+          "AuthenticationFlaw.MissingForCriticalAPI",
+          "InputValidationFlaw.UnsanitizedSystemCommand",
+          "InsecureDefaultConfig.PublicNetworkExposure"
         ]
       }
     ]

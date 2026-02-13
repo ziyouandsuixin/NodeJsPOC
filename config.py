@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 # API配置（完全保持）
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "sk-")
 EMBED_MODEL = "text-embedding-3-small"
 CHAT_MODEL = "gpt-5-chat-latest"
 
@@ -11,9 +11,9 @@ PROJECT_ROOT = Path(__file__).parent
 
 # 知识库路径（严格对应）
 KNOWLEDGE_BASE_PATHS = {
-    "NodeJs": PROJECT_ROOT / "knowledge/NodeJs_types",      
-    "rootcause": PROJECT_ROOT / "knowledge/rootcause",  # ← rootcause
-    "exploit": PROJECT_ROOT / "knowledge/ExploitBehavior",    # ← exploit（不变）
+    "NodeJs": PROJECT_ROOT / "knowledge/NodeJs_types",      # ← 指向文件
+    "rootcause": PROJECT_ROOT / "knowledge/rootcause",        # ← 指向文件
+    "exploit": PROJECT_ROOT / "knowledge/ExploitBehavior", # ← 指向文件
     "NodeJstree": PROJECT_ROOT
 }
 

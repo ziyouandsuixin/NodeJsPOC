@@ -3,6 +3,10 @@
     "Injection": [
       {
         "name": "TemplateInjection",
+        "vulnerability_id": "orval-mock-const-injection",
+        "package": "@orval/mock",
+        "affected_versions": "7.x <7.20.0, 8.x <8.0.3",
+        "vuln_type": ["模板注入", "命令注入"],
         "pattern": "该漏洞源于 `@orval/mock` 在解析 OpenAPI schema 的 `const` 类型属性时，未对属性值进行任何序列化或转义处理（如使用 `JSON.stringify`），而是直接将原始字符串赋值到生成的代码变量中。这使得攻击者可以通过精心构造的 `const` 值突破字符串边界，将恶意代码注入到生成的 TypeScript/JavaScript 文件中。",
         "symptoms": [
           "在 `packages/mock/src/faker/getters/scalar.ts` 文件的 `getMockScalar` 函数中，存在 `value = item.const;` 这样的直接赋值语句",
@@ -14,39 +18,38 @@
           "CommandInjection.OpenAPIConstUnescaped",
           "RCE.GeneratedCode.UserControlledInput",
           "TemplateInjection.Npm.OrvalMock"
-        ]
+        ],
+        "cve": null,
+        "ghsa": null
       },
       {
-          "name": "AuthenticationSession",
-          "pattern": "该漏洞影响 @mcpjam/inspector ≤1.4.2 版本，因默认监听 0.0.0.0 且 /api/mcp/connect 接口无认证+命令注入，导致远程攻击者可发送恶意 HTTP 请求执行任意系统命令：1. 服务默认暴露公网，无需本地访问；2. 接口无身份验证，未授权用户可发起请求；3. 直接执行用户可控的 command/args，无安全校验。漏洞 CVSS 评分为 9.8（Critical），EPSS 分数 0.646%（70th 百分位， exploitation概率高），无需用户交互即可远程触发 RCE，可导致目标系统被完全控制、敏感数据泄露或业务中断。",
-          "symptoms": [
-              "@mcpjam/inspector 版本处于 ≤1.4.2 区间",
-              "启动服务后，远程主机可通过 curl http://目标IP:6274 访问服务（非本地仅可访问）",
-              "发送文档中的 PoC 请求后，目标主机执行 calc（Windows）或 xcalc（Linux），验证 RCE 触发",
-              "核心代码无认证逻辑与命令白名单，hostname 配置为 0.0.0.0",
-              "漏洞比 CVE-2025-49596 更严重，无需诱导用户点击链接，仅需 HTTP 请求"
-          ],
-          "related_exploit": [
-              "CommandInjection.CVE-2026-23744",
-              "RCE.RemoteNoInteraction",
-              "AuthenticationBypass.MissingAPIKey",
-              "InputSanitizationFlaw.SystemCommand"
-          ]
+        "name": "AuthenticationSession",
+        "vulnerability_id": "mcpjam-inspector-authsession-rce",
+        "package": "@mcpjam/inspector",
+        "affected_versions": "≤1.4.2",
+        "vuln_type": ["命令注入", "认证缺失", "不安全默认配置"],
+        "pattern": "该漏洞影响 @mcpjam/inspector ≤1.4.2 版本，因默认监听 0.0.0.0 且 /api/mcp/connect 接口无认证+命令注入，导致远程攻击者可发送恶意 HTTP 请求执行任意系统命令：1. 服务默认暴露公网，无需本地访问；2. 接口无身份验证，未授权用户可发起请求；3. 直接执行用户可控的 command/args，无安全校验。漏洞 CVSS 评分为 9.8（Critical），EPSS 分数 0.646%（70th 百分位， exploitation概率高），无需用户交互即可远程触发 RCE，可导致目标系统被完全控制、敏感数据泄露或业务中断。",
+        "symptoms": [
+          "@mcpjam/inspector 版本处于 ≤1.4.2 区间",
+          "启动服务后，远程主机可通过 curl http://目标IP:6274 访问服务（非本地仅可访问）",
+          "发送文档中的 PoC 请求后，目标主机执行 calc（Windows）或 xcalc（Linux），验证 RCE 触发",
+          "核心代码无认证逻辑与命令白名单，hostname 配置为 0.0.0.0",
+          "漏洞比 CVE-2025-49596 更严重，无需诱导用户点击链接，仅需 HTTP 请求"
+        ],
+        "related_exploit": [
+          "CommandInjection.CVE-2026-23744",
+          "RCE.RemoteNoInteraction",
+          "AuthenticationBypass.MissingAPIKey",
+          "InputSanitizationFlaw.SystemCommand"
+        ],
+        "cve": "CVE-2026-23744",
+        "ghsa": null
       }
     ],
-    "PathFileSystem": [
-
-    ],
-    "InformationDisclosure":[
-    ],
-    "AuthenticationSession":[
-
-    ],
-    "ResourceDoS":[
-
-    ],
-    "CryptographicMisuse":[
-      
-    ]
+    "PathFileSystem": [],
+    "InformationDisclosure": [],
+    "AuthenticationSession": [],
+    "ResourceDoS": [],
+    "CryptographicMisuse": []
   }
 }

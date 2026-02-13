@@ -146,9 +146,10 @@ def load_json_files_to_docs_Vulnerability(dir_path: str) -> List[Document]:
                 # 构建完整路径
                 path = get_path_for_entry(entry, name_to_entry)
                 
-                # 创建文档
+                # 创建文档 - Vulnerability只有这些字段
                 doc_content = f"Path: {' -> '.join(path)}\n"
                 doc_content += f"Name: {entry.get('name', '')}\n"
+                doc_content += f"Package: {entry.get('package', '')}\n"
                 doc_content += f"Category: {entry.get('category', '')}\n"
                 doc_content += f"Pattern: {entry.get('pattern', '')}\n"
                 doc_content += f"Symptoms: {', '.join(entry.get('symptoms', []))}\n"
@@ -203,12 +204,23 @@ def load_json_files_to_docs_Exploit(dir_path: str) -> List[Document]:
                 # 构建完整路径
                 path = get_path_for_entry(entry, name_to_entry)
                 
-                # 创建文档
+                # 创建文档 - 完整包含所有字段
                 doc_content = f"Path: {' -> '.join(path)}\n"
                 doc_content += f"Name: {entry.get('name', '')}\n"
                 doc_content += f"Category: {entry.get('category', '')}\n"
                 doc_content += f"Description: {entry.get('description', '')}\n"
-                doc_content += f"Steps: {entry.get('steps', '')}"
+                doc_content += f"Impact: {entry.get('impact', '')}\n"
+                doc_content += f"Steps: {entry.get('steps', '')}\n"
+                
+                # 添加 applicable_to
+                applicable_to = entry.get('applicable_to', [])
+                if applicable_to:
+                    doc_content += f"applicable_to: {json.dumps(applicable_to, ensure_ascii=False)}\n"
+                
+                # 添加 SampleCode
+                sample_code = entry.get('SampleCode', [])
+                if sample_code:
+                    doc_content += f"SampleCode: {json.dumps(sample_code, ensure_ascii=False)}\n"
                 
                 doc = Document(
                     page_content=doc_content,
@@ -216,7 +228,8 @@ def load_json_files_to_docs_Exploit(dir_path: str) -> List[Document]:
                         "name": entry.get("name", ""),
                         "category": entry.get("category", ""),
                         "path": " -> ".join(path),
-                        "type": "Exploit"
+                        "type": "Exploit",
+                        "applicable_to": applicable_to  # 存在metadata中方便检索
                     }
                 )
                 docs.append(doc)
@@ -231,14 +244,14 @@ def load_json_files_to_docs_Exploit(dir_path: str) -> List[Document]:
 def build_vectorstore(knowledge_dir: str, top_k: int = 5, doc_type: str = "NodeJs"):
     """
     构建对应目录的向量库
-    :param doc_type: "NodeJs" | "rootcause" | "exploit"  # ✅ 根据config.py修改
+    :param doc_type: "NodeJs" | "rootcause" | "exploit"
     """
     # 根据doc_type调用对应的加载器
     if doc_type == "NodeJs":
         docs = load_json_files_to_docs_NodeJs(knowledge_dir)
-    elif doc_type == "rootcause":  # ✅ 匹配config.py中的"rootcause"
+    elif doc_type == "rootcause":
         docs = load_json_files_to_docs_Vulnerability(knowledge_dir)
-    elif doc_type == "exploit":    # ✅ 匹配config.py中的"exploit"
+    elif doc_type == "exploit":
         docs = load_json_files_to_docs_Exploit(knowledge_dir)
     else:
         raise ValueError(f"Unsupported document type: {doc_type}")
@@ -251,7 +264,7 @@ def build_vectorstore(knowledge_dir: str, top_k: int = 5, doc_type: str = "NodeJ
     embeddings = OpenAIEmbeddings(
         model=EMBED_MODEL,
         openai_api_key=OPENAI_API_KEY,
-        openai_api_base="https://api.gpt.ge/v1/",  # ← 有base URL
+        openai_api_base="https://api.gpt.ge/v1/",
         default_headers={"x-foo":"true"}
     )
     
@@ -271,18 +284,14 @@ def enhanced_rag_query(query: str, retriever, keywords: List[str], max_docs: int
         logger.warning(f"Retriever 为 None，返回空列表")
         return []
     
-    # 空知识库安全处理
-    try:
-        all_docs = list(retriever.vectorstore.docstore._dict.values())
-    except Exception as e:
-        logger.warning(f"无法获取文档列表: {e}")
-        return []
+    vectorstore = retriever.vectorstore
+    all_docs = list(vectorstore.docstore._dict.values())
     
     # 如果是空知识库（只有虚拟文档）
     if not all_docs or (len(all_docs) == 1 and "empty" in str(all_docs[0].metadata.get("name", ""))):
         logger.info("知识库为空，跳过精确匹配")
         try:
-            return retriever.invoke(query)[:max_docs]
+            return vectorstore.similarity_search(query, k=max_docs)
         except:
             return []
     
@@ -331,7 +340,7 @@ def enhanced_rag_query(query: str, retriever, keywords: List[str], max_docs: int
     # ---------- Step3: 向量检索兜底 ----------
     if len(exact_matches) < max_docs:
         try:
-            vector_docs = retriever.invoke(query)
+            vector_docs = vectorstore.similarity_search(query, k=max_docs)
             for d in vector_docs:
                 key = d.metadata.get("name") or d.page_content[:30]
                 if key not in seen:
