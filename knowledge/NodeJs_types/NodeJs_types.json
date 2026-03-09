@@ -119,6 +119,28 @@
           "InsecureDefaultConfig.PublicNetworkExposure",
           "AuthenticationFlaw.MissingForCriticalAPI"
         ]
+      },
+      {
+        "name": "OpenCode_XSS_To_Local_RCE",
+        "category": "WebFrameworkPackages",
+        "pattern": "OpenCode Web UI存在三重缺陷叠加导致的链式攻击：1) Markdown渲染器对LLM响应未做HTML净化，允许注入恶意JavaScript；2) 支持通过`?url=`参数加载外部服务器的聊天会话，突破信任边界；3) `/pty/`端点允许在本地执行任意命令且未校验请求来源。攻击者可构造恶意聊天会话，诱骗用户访问带`?url=`参数的链接，触发XSS后调用`/pty/`端点执行本地命令，实现从XSS到RCE的攻击链",
+        "symptoms": [
+          "项目使用 opencode-ai 版本 < 1.1.10",
+          "Web UI 使用 Markdown 渲染 LLM 响应，直接插入 HTML 到 DOM，无 DOMPurify 净化",
+          "支持通过 ?url= 参数加载外部服务器的聊天会话，可突破信任边界",
+          "/pty/ 端点允许在本地执行任意命令，且未对请求来源做严格校验",
+          "恶意 JavaScript 可以在 localhost:4096 同源下发起请求，调用 /pty/ 端点",
+          "最终表现为攻击者可以通过恶意链接，在用户本地机器上执行任意命令"
+        ],
+        "related_exploit": [
+          "CrossSiteScripting.UnsanitizedMarkdownRendering",
+          "TrustBoundaryViolation.ExternalContentLoading",
+          "RemoteCodeExecution.LocalApiAbuse",
+          "Injection.XSSToRCE",
+          "XSS.UnsanitizedMarkdown",
+          "TrustBoundary.ExternalContentLoading",
+          "RCE.LocalApiAbuse"
+        ]
       }
     ],
 
@@ -146,7 +168,237 @@
         ]
       }
     ],
-    
+
+    "Injection": [
+      {
+        "name": "VeramoDataStoreSQLInjection",
+        "language": "TypeScript",
+        "category": "Injection",
+        "pattern": "Veramo data-store 模块的 decorateQB() 函数处理排序参数 order 时，将用户可控的 column 字段直接作为 SQL 别名拼接进 orderBy 子句，未做转义、过滤或参数化处理，攻击者可构造恶意 column 值注入任意 SQL 片段，突破数据访问限制",
+        "vulnerability_id": "GHSA-38cw-85xc-xr9x",
+        "package": "@veramo/data-store",
+        "affected_versions": "<6.0.2",
+        "vuln_type": [
+          "SQL Injection",
+          "Unsanitized User Input",
+          "QueryBuilder Misuse"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-38cw-85xc-xr9x",
+        "symptoms": [
+          "项目使用 @veramo/data-store 版本低于 6.0.2",
+          "代码中通过 decorateQB() 处理用户传入的 order 排序参数，且 column 字段直接来自前端/外部输入",
+          "构造含闭合引号、额外 SQL 子句的 column 参数时，查询返回非预期数据（如其他用户的 DID 信息）",
+          "重点关注 SQLInjection.UnsanitizedUserInput 漏洞类型",
+          "可能因直接拼接用户输入到 SQL 语句，引发越权查询/修改数据的风险",
+          "TypeScript 编译时类型校验无法拦截运行时的恶意字符串注入"
+        ],
+        "related_exploit": [
+          "SQLInjection.UnsanitizedColumnAlias",
+          "InputValidationFlaw.SQLQueryConcatenation",
+          "LogicFlaw.BypassTypeScriptCompileCheck",
+          "AccessControlFlaw.UnauthorizedDataAccess"
+        ]
+      },
+      {
+        "name": "RenovateHelmCommandInjection",
+        "language": "TypeScript",
+        "category": "Injection",
+        "pattern": "Renovate在处理Helm Chart.yaml文件时，将用户可控的repository字段直接拼接至helm registry login系统命令中，未对参数进行充分转义处理。攻击者可通过在repository字段中注入命令分隔符（如||、;、&）和恶意指令，使原本的认证命令被拆分，非预期的恶意命令被执行，导致命令注入漏洞",
+        "vulnerability_id": "GHSA-3f44-xw83-3pmg",
+        "package": "renovate",
+        "affected_versions": "<37.440.7",
+        "vuln_type": [
+          "Command Injection",
+          "OS Command Injection",
+          "Argument Injection"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-3f44-xw83-3pmg",
+        "symptoms": [
+          "项目使用 renovate 版本低于 37.440.7",
+          "处理 Helm Chart.yaml 的 repository 字段后直接拼接系统命令",
+          "未使用 shlex.quote() 等工具对 repository 字段进行充分参数转义",
+          "helm registry login 命令执行依赖用户输入的 repository 参数",
+          "拥有仓库写入权限的攻击者可构造恶意 repository 字段值",
+          "重点关注 CommandInjection.UnsanitizedCommandArgument 漏洞类型",
+          "可能会因为命令参数未转义，通过注入分隔符执行任意系统命令"
+        ],
+        "related_exploit": [
+          "CommandInjection.UnsanitizedArgumentConcatenation",
+          "InputValidationFlaw.MissingArgumentEscaping",
+          "ExecutionFlaw.InsecureSystemCommandExecution",
+          "AccessControlFlaw.RepositoryInputMisuse"
+        ]
+      },
+      {
+        "name": "pnpmEnvVarCommandInjection",
+        "language": "TypeScript",
+        "category": "Injection",
+        "pattern": "pnpm 在解析 .npmrc 配置文件时，支持通过 `${VAR}` 语法进行环境变量替换。当配置 `tokenHelper`（用于获取私有仓库令牌的工具路径）时，`loadToken` 函数会执行该工具路径。该函数仅校验路径是否为绝对路径且存在，未对路径内容做命令字符净化，且使用 `spawnSync(helperPath, { shell: true })` 执行。攻击者可通过控制环境变量值，在路径中注入命令分隔符（如 `;`、`&&`），导致任意命令执行",
+        "vulnerability_id": "GHSA-2phv-j68v-wwqx",
+        "package": "pnpm",
+        "affected_versions": ">=10.0.0 <10.27.0",
+        "vuln_type": [
+          "Command Injection",
+          "OS Command Injection",
+          "Environment Variable Injection",
+          "Shell Injection"
+        ],
+        "cve": "CVE-2025-69262",
+        "ghsa": "GHSA-2phv-j68v-wwqx",
+        "symptoms": [
+          ".npmrc 支持 ${VAR} 格式的环境变量替换",
+          "tokenHelper 配置可关联用户可控的环境变量",
+          "loadToken 函数使用 spawnSync 且 shell: true 执行路径",
+          "仅校验路径是否为绝对路径+存在，未净化命令特殊字符",
+          "攻击者可通过控制环境变量注入恶意命令",
+          "执行 pnpm install 等操作时触发恶意命令执行",
+          "重点关注 CommandInjection.EnvVarSubstitution 漏洞类型",
+          "可能会因为 shell 执行+输入未净化，通过环境变量注入任意系统命令"
+        ],
+        "related_exploit": [
+          "CommandInjection.ShellEnabledExecution",
+          "InputValidationFlaw.UnsanitizedEnvVarSubstitution",
+          "ExecutionFlaw.InsecureSpawnWithShell",
+          "ConfigurationFlaw.VulnerableEnvVarReplacement",
+          "CommandInjection.EnvVarDriven",
+          "PackageManagerVuln.ShellExecutionInjection"
+        ]
+      },
+      {
+        "name": "VegaVlSelectionTuplesXSS",
+        "language": "TypeScript",
+        "category": "Injection",
+        "pattern": "Vega 的 vlSelectionTuples 函数未校验传入参数的类型，直接调用其 map 方法。攻击者可通过用户可控的 Vega JSON 规范注入包含自定义 map 方法的恶意对象，该 map 方法引用全局 gadget 函数（如 VEGA_DEBUG 中的 CanvasHandler.prototype.on），通过 vlSelectionTuples 触发调用，最终在应用上下文执行任意 JavaScript 代码，实现 DOM XSS。",
+        "vulnerability_id": "GHSA-829q-m3qg-ph8r",
+        "package": "vega",
+        "affected_versions": "<5.32.0",
+        "vuln_type": [
+          "Cross-site Scripting",
+          "DOM-based XSS",
+          "Gadget Chain XSS"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-829q-m3qg-ph8r",
+        "symptoms": [
+          "应用将 vega、vega.View 实例或 VEGA_DEBUG 挂载到 window 等全局作用域",
+          "允许用户上传或定义自定义 Vega/Vega-Lite JSON 规范",
+          "vlSelectionTuples 函数未检查传入参数是否为数组，直接调用其 map 方法",
+          "全局存在可被滥用的 gadget 函数（如原型方法、eval、console.log 等）",
+          "攻击者可通过构造恶意 Vega JSON 规范，在 vlSelectionTuples 参数中注入包含自定义 map 方法的对象",
+          "用户触发特定事件（如鼠标移动）时，恶意 JavaScript 代码被执行"
+        ],
+        "related_exploit": [
+          "CrossSiteScripting.DOMBased",
+          "InputValidationFlaw.UncheckedParameterType",
+          "TrustBoundaryViolation.UserControlledObjectInjection",
+          "WebSecurityFlaw.GlobalGadgetAbuse",
+          "CrossSiteScripting.DOMBasedGadgetAbuse",
+          "WebSecurityFlaw.UnvalidatedUserControlledObjects"
+        ]
+      },
+      {
+        "name": "SignalKCodeInjectionViaNpmVersion",
+        "language": "TypeScript",
+        "category": "Injection",
+        "pattern": "Signal K Server App Store 模块提供 REST API 供管理员安装 npm 包扩展功能。安装接口的 version 参数设计初衷仅接收语义化版本号，但未做任何格式校验和内容净化，直接传递给 npm install 执行。攻击者可构造恶意 version 参数指向包含恶意 postinstall 脚本的 npm 包源（如 GitHub 仓库简写、Git URL、HTTP(S) tarball 链接），npm 安装时会自动执行 postinstall 脚本，导致服务器端任意代码执行。",
+        "vulnerability_id": "GHSA-93jc-vqqc-vvvh",
+        "package": "signalk-server",
+        "affected_versions": "<2.19.0",
+        "vuln_type": [
+          "Code Injection",
+          "Command Injection",
+          "NPM Version Injection"
+        ],
+        "cve": "CVE-2025-68619",
+        "ghsa": "GHSA-93jc-vqqc-vvvh",
+        "symptoms": [
+          "version 参数接收任意字符串，未校验是否为语义化版本号",
+          "仅验证包名存在性，未验证 version 对应的包来源合法性",
+          "npm install 会自动执行恶意包内的 postinstall 生命周期脚本",
+          "脚本以 Signal K Server 进程权限运行，可执行任意系统命令",
+          "攻击者可通过构造恶意 version 参数注入并执行任意代码",
+          "最终表现为攻击者获取服务器完全控制权，篡改船舶数据、植入后门或破坏系统"
+        ],
+        "related_exploit": [
+          "CodeInjection.UnsanitizedNpmVersion",
+          "ExecutionFlaw.NpmPostinstallScriptAbuse",
+          "InputValidationFlaw.MissingVersionCheck",
+          "SupplyChainAttack.MaliciousNpmPackage",
+          "CodeInjection.NpmVersionParameter",
+          "SupplyChainAttack.MaliciousPostinstallScript"
+        ]
+      },
+      {
+        "name": "TRPCPrototypePollution",
+        "language": "TypeScript",
+        "category": "Injection",
+        "pattern": "tRPC 的 `formDataToObject` 函数在处理 FormData 时，支持通过括号/点 notation（如 `user[name]`、`addr.city`）创建嵌套对象，但未过滤 `__proto__`、`constructor`、`prototype` 等危险键。攻击者可构造恶意 FormData 字段名（如 `__proto__[isAdmin]`），`set` 函数递归处理时直接操作 `Object.prototype`，导致所有对象继承恶意属性，引发权限绕过或拒绝服务。漏洞仅在使用 `experimental_caller` 或 `experimental_nextAppDirCaller` 时触发。",
+        "vulnerability_id": "GHSA-43p4-m455-4f4j",
+        "package": "@trpc/server",
+        "affected_versions": ">=10.27.0 <10.45.3 || >=11.0.0 <11.8.0",
+        "vuln_type": [
+          "Prototype Pollution",
+          "CWE-1321",
+          "Input Validation Flaw",
+          "FormData Processing Vulnerability"
+        ],
+        "cve": "CVE-2025-68130",
+        "ghsa": "GHSA-43p4-m455-4f4j",
+        "symptoms": [
+          "依赖 `@trpc/server`，版本为 >=10.27.0 <10.45.3 或 >=11.0.0 <11.8.0",
+          "使用 Next.js App Router 适配器的 `nextAppDirCaller`，自动将 FormData 转换为对象",
+          "`formDataToObject` 函数未过滤危险键，直接递归处理字段名",
+          "业务逻辑通过对象属性判断权限（如 `if (user.isAdmin)`）或依赖默认对象方法",
+          "攻击者构造含 `__proto__` 字段名的 FormData 即可触发污染",
+          "污染后普通对象会继承恶意属性（如 `{}.isAdmin === true`）",
+          "重点关注「原型污染（CWE-1321）」「危险输入未过滤」漏洞类型"
+        ],
+        "related_exploit": [
+          "DataProcessing.PrototypePollution.UnfilteredKeys",
+          "Adapter.NextAppDir.FormDataInjection",
+          "LogicBypass.AuthorizationViaProtoPollution",
+          "DataInjection.DangerousFormDataFields"
+        ]
+      }
+    ],
+
+    "ConfigurationFlaw": [
+      {
+        "name": "pnpmGitDependencyScriptBypass",
+        "language": "TypeScript",
+        "category": "ConfigurationFlaw",
+        "pattern": "pnpm v10+ 引入的“默认禁用依赖生命周期脚本”安全功能（通过 onlyBuiltDependencies = [] 实现）存在范围漏洞：Git 托管的依赖在 fetch 阶段被单独处理，`preparePackage` 函数不仅忽略 `onlyBuiltDependencies` 限制，还显式移除 `ignore-scripts` 配置，导致 Git 依赖的 prepare/prepublish/prepack 脚本可在 `pnpm install` 时无提示执行，绕过安全策略",
+        "vulnerability_id": "GHSA-379q-355j-w6rj",
+        "package": "pnpm",
+        "affected_versions": ">=10.0.0 <10.6.0",
+        "vuln_type": [
+          "Security Control Bypass",
+          "Configuration Flaw",
+          "Supply Chain Vulnerability",
+          "Lifecycle Script Execution"
+        ],
+        "cve": "CVE-2025-69264",
+        "ghsa": "GHSA-379q-355j-w6rj",
+        "symptoms": [
+          "使用 pnpm v10+ 版本 (>=10.0.0 <10.6.0)",
+          "启用了 onlyBuiltDependencies 限制构建阶段脚本，但未覆盖 fetch 阶段",
+          "项目中依赖了 Git 托管的包（如 git+https://xxx）",
+          "Git 依赖的 prepare/prepublish/prepack 脚本在 install 时自动执行",
+          "用户无任何脚本执行的提示或确认步骤",
+          "重点关注 SecurityControlBypass.ScopeMismatchedRestriction 漏洞类型",
+          "可能会因为安全控制范围不完整，导致 Git 依赖绕过脚本禁用策略"
+        ],
+        "related_exploit": [
+          "SecurityControlBypass.ScopeMismatchedRestriction",
+          "SupplyChainAttack.LifecycleScriptExecution",
+          "ConfigurationFlaw.IgnoredSecurityOption",
+          "ExecutionFlaw.UnintendedScriptRun"
+        ]
+      }
+    ],
+
     "OtherLanguageVulns":[
       {
         "name": "Java_LDAPInjection",
@@ -559,6 +811,696 @@
         "AttackSurfaceExpansion",
         "SystemReconnaissance",
         "ChainedAttackPreparation"
+      ]
+    },
+    {
+      "name": "Java_PlaintextPassword",
+      "language": "Java",
+      "category": "ConfigurationFlaw",
+      "pattern": "从外部存储读取密码并以明文形式直接用于安全敏感操作（如数据库连接），未进行任何加密或解密处理",
+      "vulnerability_id": "CWE256",
+      "package": "java.sql.DriverManager",
+      "affected_versions": "所有版本",
+      "vuln_type": [
+        "Plaintext Storage of Password",
+        "Credential Management",
+        "Sensitive Data Exposure"
+      ],
+      "cve": "",
+      "ghsa": "",
+      "symptoms": [
+        "密码从 Properties 文件或普通文件中读取",
+        "密码未进行加密或解密处理",
+        "直接作为凭据用于数据库连接",
+        "数据通过抽象方法在类之间传递（81_variant）",
+        "密码在内存中以明文形式存在",
+        "使用 DriverManager.getConnection() 直接传入明文密码"
+      ],
+      "related_exploit": [
+        "CredentialDisclosure",
+        "DatabaseUnauthorizedAccess",
+        "LateralMovement",
+        "PrivilegeEscalation"
+      ]
+    },
+    {
+      "name": "Java_HardCodedPassword",
+      "language": "Java",
+      "category": "ConfigurationFlaw",
+      "pattern": "将硬编码或不安全来源的字符串作为认证凭据直接用于安全敏感操作（如数据库连接），未使用安全的凭据存储机制",
+      "vulnerability_id": "CWE259",
+      "package": "java.sql.DriverManager",
+      "affected_versions": "所有版本",
+      "vuln_type": [
+        "Hard Coded Password",
+        "Credential Management",
+        "Sensitive Data Exposure",
+        "Authentication Bypass"
+      ],
+      "cve": "",
+      "ghsa": "",
+      "symptoms": [
+        "密码以明文字符串形式存在于代码中",
+        "硬编码凭据被直接用于数据库或认证接口",
+        "未使用安全的凭据存储机制（如环境变量或密钥管理服务）",
+        "数据通过抽象方法在类之间传播（81_variant）",
+        "源码或字节码泄露即可获取有效密码",
+        "使用 DriverManager.getConnection() 直接传入硬编码密码"
+      ],
+      "related_exploit": [
+        "AuthenticationBypass",
+        "CredentialReuse",
+        "UnauthorizedDatabaseAccess",
+        "DatabaseCompromise",
+        "LongTermCredentialLeakage"
+      ]
+    },
+    {
+      "name": "Java_PlaintextCookie",
+      "language": "Java",
+      "category": "InformationDisclosure",
+      "pattern": "将敏感认证数据（如用户名、密码、Token）未经任何加密或哈希处理，直接以明文形式存储到Cookie中",
+      "vulnerability_id": "CWE315",
+      "package": "javax.servlet.http.HttpServletResponse",
+      "affected_versions": "所有版本",
+      "vuln_type": [
+        "Plaintext Storage in Cookie",
+        "Sensitive Data Exposure",
+        "Session Management Flaw",
+        "Credential Disclosure"
+      ],
+      "cve": "",
+      "ghsa": "",
+      "symptoms": [
+        "Cookie中直接存储用户名、密码或认证凭据",
+        "未对数据进行哈希或加密处理",
+        "使用 response.addCookie() 写入敏感信息",
+        "未设置 HttpOnly 或 Secure 等保护属性",
+        "数据通过抽象方法在类之间传播（81_variant）",
+        "Cookie内容可直接还原出凭据",
+        "认证信息暴露于客户端"
+      ],
+      "related_exploit": [
+        "SessionHijacking",
+        "CredentialDisclosure",
+        "AuthenticationBypass",
+        "CredentialReuse",
+        "UnauthorizedAccess"
+      ]
+    },
+    {
+      "name": "Java_CleartextTxSensitiveInfo",
+      "language": "Java",
+      "category": "InformationDisclosure",
+      "pattern": "敏感信息（如密码、认证凭据、会话密钥）通过未加密的网络通道（普通Socket、非HTTPS连接）直接传输，未使用SSL/TLS等加密机制",
+      "vulnerability_id": "CWE319",
+      "package": "java.net.Socket",
+      "affected_versions": "所有版本",
+      "vuln_type": [
+        "Cleartext Transmission of Sensitive Information",
+        "Man-in-the-Middle Vulnerability",
+        "Network Security Flaw",
+        "Credential Sniffing"
+      ],
+      "cve": "",
+      "ghsa": "",
+      "symptoms": [
+        "密码或凭据通过普通Socket / TCP连接传输",
+        "使用非SSL/TLS的URLConnection获取或发送敏感数据",
+        "未对网络层传输的数据进行加密",
+        "敏感数据直接被用于认证或安全关键操作",
+        "数据通过抽象方法在类之间传播（81_variant）",
+        "使用Socket而非SSLSocket建立连接",
+        "使用HTTP而非HTTPS传输敏感信息"
+      ],
+      "related_exploit": [
+        "ManInTheMiddle",
+        "CredentialSniffing",
+        "AccountTakeover",
+        "CredentialDisclosure",
+        "PrivilegeEscalation"
+      ]
+    },
+    {
+      "name": "Java_HardCodedCryptoKey",
+      "language": "Java",
+      "category": "ConfigurationFlaw",
+      "pattern": "加密密钥以硬编码字符串常量形式存在于代码中，并直接用于密码学操作（如SecretKeySpec初始化），未使用安全的密钥生成与存储机制",
+      "vulnerability_id": "CWE321",
+      "package": "javax.crypto.spec.SecretKeySpec",
+      "affected_versions": "所有版本",
+      "vuln_type": [
+        "Hard Coded Cryptographic Key",
+        "Cryptographic Key Disclosure",
+        "Sensitive Data Exposure",
+        "Encryption Bypass"
+      ],
+      "cve": "",
+      "ghsa": "",
+      "symptoms": [
+        "加密密钥被写死在代码中或由硬编码值传递",
+        "使用 SecretKeySpec 将字符串直接作为密钥",
+        "未从安全存储或安全随机源生成密钥",
+        "密钥通过抽象方法在类之间传播（81_variant）",
+        "攻击者可通过反编译或内存分析恢复密钥",
+        "使用固定字符串初始化加密算法（AES、DES等）",
+        "密钥以字符串常量形式存在于代码中"
+      ],
+      "related_exploit": [
+        "CryptographicKeyDisclosure",
+        "EncryptedDataRecovery",
+        "SecurityBypass",
+        "KeyExtraction",
+        "EncryptedDataDisclosure",
+        "CryptoBypass"
+      ]
+    },
+    {
+      "name": "Java_UnprotectedCredTransport",
+      "language": "Java",
+      "category": "InformationDisclosure",
+      "pattern": "用户凭证（用户名、密码）通过非SSL加密的HTTP连接传输，表单action使用http://协议而非https://，导致凭证在网络中明文暴露",
+      "vulnerability_id": "CWE523",
+      "package": "javax.servlet.http.HttpServletResponse",
+      "affected_versions": "所有版本",
+      "vuln_type": [
+        "Unprotected Transport of Credentials",
+        "Man-in-the-Middle Vulnerability",
+        "Network Security Flaw",
+        "Credential Sniffing"
+      ],
+      "cve": "",
+      "ghsa": "",
+      "symptoms": [
+        "表单 action 使用 http 协议而非 https",
+        "用户名和密码等认证信息直接通过网络明文传输",
+        "浏览器端可控输入直接提交到服务端",
+        "无加密保护，易受中间人攻击",
+        "登录页面通过HTTP提供服务",
+        "认证请求未使用SSL/TLS加密"
+      ],
+      "related_exploit": [
+        "NetworkSniffing.CredentialsTheft",
+        "ManInTheMiddle.AuthenticationBypass",
+        "NetworkSniffing",
+        "ManInTheMiddle",
+        "AuthenticationBypass"
+      ]
+    },
+    {
+      "name": "Java_PersistentCookieInfoExposure",
+      "language": "Java",
+      "category": "InformationDisclosure",
+      "pattern": "将敏感信息写入持久化Cookie并设置长期有效时间（如多年），导致敏感数据长期存储在客户端磁盘中，增加被窃取风险",
+      "vulnerability_id": "CWE539",
+      "package": "javax.servlet.http.Cookie",
+      "affected_versions": "所有版本",
+      "vuln_type": [
+        "Information Exposure Through Persistent Cookie",
+        "Client-Side Storage Vulnerability",
+        "Session Management Flaw",
+        "Cookie Security Issue"
+      ],
+      "cve": "",
+      "ghsa": "",
+      "symptoms": [
+        "创建包含敏感信息的Cookie",
+        "调用 cookie.setMaxAge() 并设置为正数（长期有效）",
+        "Cookie未设置为会话级（Session Cookie）",
+        "敏感数据存储在客户端而非服务器",
+        "Cookie有效期设置过长（如数年）",
+        "即使浏览器关闭，Cookie仍保存在客户端磁盘中"
+      ],
+      "related_exploit": [
+        "ClientSideCookieTheft",
+        "PersistentAuthenticationLeak",
+        "LocalFileSystemDisclosure",
+        "CookieTheft",
+        "AuthenticationTokenDisclosure",
+        "SessionHijacking"
+      ]
+    },
+    {
+      "name": "Java_InsufficientSessionExpiration",
+      "language": "Java",
+      "category": "LogicFlaw",
+      "pattern": "将HttpSession设置为永不过期（setMaxInactiveInterval(-1)），导致会话标识符长期有效，即使用户长时间不活动仍可继续使用，增加会话劫持风险",
+      "vulnerability_id": "CWE613",
+      "package": "javax.servlet.http.HttpSession",
+      "affected_versions": "所有版本",
+      "vuln_type": [
+        "Insufficient Session Expiration",
+        "Session Management Flaw",
+        "Authentication Logic Defect",
+        "Session Hijacking Risk"
+      ],
+      "cve": "",
+      "ghsa": "",
+      "symptoms": [
+        "调用 HttpSession.setMaxInactiveInterval(-1)",
+        "未设置合理的会话过期时间",
+        "Session 在用户长时间不活动后仍然有效",
+        "未实施绝对超时控制机制",
+        "Session 生命周期无限延长",
+        "缺乏非活动超时机制"
+      ],
+      "related_exploit": [
+        "SessionHijacking",
+        "SessionFixation",
+        "PrivilegePersistence",
+        "SessionReplay",
+        "PrivilegeAbuse"
+      ]
+    },
+    {
+      "name": "Java_SensitiveCookieWithoutSecure",
+      "language": "Java",
+      "category": "ConfigurationFlaw",
+      "pattern": "创建包含敏感信息的Cookie（如Session ID、认证令牌）后，未调用cookie.setSecure(true)设置Secure属性，导致Cookie可能在HTTP明文连接中被传输，易被网络监听者截获",
+      "vulnerability_id": "CWE614",
+      "package": "javax.servlet.http.Cookie",
+      "affected_versions": "所有版本",
+      "vuln_type": [
+        "Sensitive Cookie Without Secure Flag",
+        "Cookie Security Misconfiguration",
+        "Session Management Flaw",
+        "HTTPS Bypass Risk"
+      ],
+      "cve": "",
+      "ghsa": "",
+      "symptoms": [
+        "使用 new Cookie() 创建敏感 Cookie",
+        "未调用 cookie.setSecure(true)",
+        "直接调用 response.addCookie(cookie)",
+        "仅通过 request.isSecure() 判断但未强制 Secure 标志",
+        "Cookie 在 HTTPS 场景下创建，但未设置 Secure 属性",
+        "浏览器在后续 HTTP 请求中仍可能发送该 Cookie"
+      ],
+      "related_exploit": [
+        "SessionHijacking",
+        "CookieSniffing",
+        "ManInTheMiddle",
+        "CookieInterception",
+        "TrafficSniffing"
+      ]
+    },
+    {
+      "name": "Java_ResourceExhaustion",
+      "language": "Java",
+      "category": "ResourceManagementFlaw",
+      "pattern": "外部可控输入（环境变量、Properties文件、URLConnection等）未经边界校验直接用于资源密集型操作（如for循环次数、文件写入次数、Thread.sleep()时间），导致CPU、磁盘或线程资源被大量占用，引发拒绝服务",
+      "vulnerability_id": "CWE400",
+      "package": "java.lang.System",
+      "affected_versions": "所有版本",
+      "vuln_type": [
+        "Resource Exhaustion",
+        "Denial of Service",
+        "CPU Exhaustion",
+        "I/O Exhaustion",
+        "Thread Blocking"
+      ],
+      "cve": "",
+      "ghsa": "",
+      "symptoms": [
+        "count 来源于环境变量、Properties 文件、系统属性、文件或 URLConnection",
+        "count 直接作为 for 循环上界使用",
+        "count 直接用于文件写入次数或 Thread.sleep()",
+        "未对 count 进行最大值、最小值或合理区间校验",
+        "数据通过抽象方法在类之间传播（81_variant）",
+        "外部输入被直接信任，未限制资源使用规模",
+        "攻击者可通过构造超大数值触发资源耗尽"
+      ],
+      "related_exploit": [
+        "ResourceExhaustion.CPU_DoS",
+        "ResourceExhaustion.IO_DoS",
+        "ResourceExhaustion.Thread_Blocking",
+        "DenialOfService",
+        "CPUExhaustion",
+        "IOExhaustion"
+      ]
+    },
+    {
+      "name": "Java_UncheckedLoopCondition",
+      "language": "Java",
+      "category": "ResourceManagementFlaw",
+      "pattern": "外部可控输入（环境变量、文件、Properties文件、系统属性等）未经上限校验直接作为for/while循环条件，循环体内可能包含I/O等高成本操作，导致CPU、磁盘或日志资源被大量占用，引发拒绝服务",
+      "vulnerability_id": "CWE606",
+      "package": "java.lang.System",
+      "affected_versions": "所有版本",
+      "vuln_type": [
+        "Unchecked Loop Condition",
+        "Resource Exhaustion",
+        "Denial of Service",
+        "CPU Exhaustion",
+        "Log Flooding"
+      ],
+      "cve": "",
+      "ghsa": "",
+      "symptoms": [
+        "循环次数来源于环境变量、文件、Properties 文件或系统属性",
+        "仅进行 Integer.parseInt 转换，未限制最大值",
+        "循环中包含 IO 操作（如 IO.writeLine）",
+        "循环变量通过抽象方法在子类中使用（81_variant）",
+        "未对 numberOfLoops 进行上限校验",
+        "直接用于 for (i < numberOfLoops) 循环条件",
+        "循环体内执行 I/O 操作，放大资源消耗风险"
+      ],
+      "related_exploit": [
+        "DenialOfService",
+        "ResourceExhaustion",
+        "LogFlooding",
+        "ResourceExhaustion.CPU_DoS",
+        "ResourceExhaustion.IO_DoS"
+      ]
+    },
+    {
+      "name": "Java_UncontrolledRecursion",
+      "language": "Java",
+      "category": "ResourceManagementFlaw",
+      "pattern": "递归函数缺乏有效的终止条件或合理的递归深度限制，递归深度依赖不受控的输入参数（如Long.MAX_VALUE），导致递归调用次数异常增长，最终引发StackOverflowError栈溢出和拒绝服务",
+      "vulnerability_id": "CWE674",
+      "package": "java.lang.StackOverflowError",
+      "affected_versions": "所有版本",
+      "vuln_type": [
+        "Uncontrolled Recursion",
+        "Stack Overflow",
+        "Denial of Service",
+        "Resource Exhaustion"
+      ],
+      "cve": "",
+      "ghsa": "",
+      "symptoms": [
+        "递归函数未设置基准终止条件或条件不合理",
+        "递归深度依赖不受控的输入值",
+        "递归调用次数可能极大",
+        "可能导致 StackOverflowError 或拒绝服务",
+        "递归深度未设置合理上限",
+        "递归调用自身形成Sink",
+        "未对递归层数进行防御性控制"
+      ],
+      "related_exploit": [
+        "StackOverflow",
+        "DenialOfService",
+        "ResourceExhaustion.StackOverflow",
+        "ProgramCrash"
+      ]
+    },
+    {
+      "name": "Java_InfiniteLoop",
+      "language": "Java",
+      "category": "ResourceManagementFlaw",
+      "pattern": "循环结构中缺乏有效的终止条件或循环条件永远满足（如while(true)），且循环体中缺少break、return或异常中断机制，导致循环持续执行，最终引发CPU占用过高、程序假死或拒绝服务",
+      "vulnerability_id": "CWE835",
+      "package": "java.lang.Thread",
+      "affected_versions": "所有版本",
+      "vuln_type": [
+        "Infinite Loop",
+        "Denial of Service",
+        "High CPU Consumption",
+        "Resource Exhaustion"
+      ],
+      "cve": "",
+      "ghsa": "",
+      "symptoms": [
+        "循环条件恒为真或递增逻辑导致条件永不满足",
+        "循环体中没有 break、return 或异常中断",
+        "程序可能进入无限循环状态",
+        "CPU 占用率异常升高，服务假死",
+        "循环体中可能包含IO操作，放大资源消耗",
+        "循环条件缺乏终止逻辑或永远成立",
+        "未对循环次数进行限制或检测"
+      ],
+      "related_exploit": [
+        "DenialOfService",
+        "HighCPUConsumption",
+        "ResourceExhaustion.CPU_DoS",
+        "ServiceFreeze"
+      ]
+    },
+    {
+      "name": "Java_UseBrokenCrypto",
+      "language": "Java",
+      "category": "ConfigurationFlaw",
+      "pattern": "使用已知弱加密算法（DES、3DES、RC4）加密敏感数据，密钥长度不足（DES=56位，3DES=112位），无法抵抗暴力破解和密码分析攻击，导致密文易被破解，敏感数据泄露",
+      "vulnerability_id": "CWE327",
+      "package": "javax.crypto.Cipher",
+      "affected_versions": "所有版本",
+      "vuln_type": [
+        "Use of Broken Crypto Algorithm",
+        "Weak Encryption",
+        "Sensitive Data Exposure",
+        "Cryptographic Flaw"
+      ],
+      "cve": "",
+      "ghsa": "",
+      "symptoms": [
+        "使用 KeyGenerator.getInstance(\"DES\") 或 KeyGenerator.getInstance(\"DESede\")",
+        "Cipher.getInstance(\"DES\") 或 Cipher.getInstance(\"DESede\")",
+        "明文数据直接使用弱算法加密",
+        "未使用 AES 或更安全的加密方式",
+        "密钥长度低于推荐标准（DES=56位，3DES=112位）",
+        "使用 RC4 等已知弱流密码",
+        "加密算法易受暴力破解或密码分析"
+      ],
+      "related_exploit": [
+        "BruteForceAttack",
+        "Cryptanalysis",
+        "SensitiveDataDisclosure",
+        "KeyRecovery",
+        "EncryptedDataDecryption"
+      ]
+    },
+    {
+      "name": "Java_ReversibleOneWayHash",
+      "language": "Java",
+      "category": "ConfigurationFlaw",
+      "pattern": "使用不安全或可逆的哈希算法（MD2、MD5、SHA1）进行数据摘要，未加盐或未采用SHA-256/SHA-512等安全哈希算法，导致哈希值易受彩虹表攻击、碰撞攻击或暴力破解，敏感信息可被恢复",
+      "vulnerability_id": "CWE328",
+      "package": "java.security.MessageDigest",
+      "affected_versions": "所有版本",
+      "vuln_type": [
+        "Reversible One-Way Hash",
+        "Weak Hash Algorithm",
+        "Sensitive Data Exposure",
+        "Cryptographic Flaw"
+      ],
+      "cve": "",
+      "ghsa": "",
+      "symptoms": [
+        "使用 MD2、MD5、SHA1 等已知不安全哈希算法",
+        "硬编码输入或敏感信息进行哈希",
+        "哈希值直接用于存储或验证",
+        "未加盐或未采用安全哈希算法",
+        "哈希结果用于密码存储或完整性校验",
+        "算法易受彩虹表或碰撞攻击"
+      ],
+      "related_exploit": [
+        "RainbowTableAttack",
+        "CollisionAttack",
+        "PasswordCracking",
+        "HashReversal",
+        "AuthenticationBypass"
+      ]
+    },
+    {
+      "name": "Java_MissingCryptoStep",
+      "language": "Java",
+      "category": "ConfigurationFlaw",
+      "pattern": "使用密码学API时遗漏必要的初始化或关键步骤，如KeyGenerator未调用init()指定密钥长度、MessageDigest未调用update()传入数据，导致密钥长度由底层Provider默认决定，可能生成低于安全要求的密钥，或在不同运行环境中产生不一致结果",
+      "vulnerability_id": "CWE325",
+      "package": "javax.crypto.KeyGenerator",
+      "affected_versions": "所有版本",
+      "vuln_type": [
+        "Missing Required Cryptographic Step",
+        "Cryptographic API Misuse",
+        "Weak Key Generation",
+        "Provider-Dependent Behavior"
+      ],
+      "cve": "",
+      "ghsa": "",
+      "symptoms": [
+        "使用 KeyGenerator 但未调用 init() 指定密钥长度",
+        "使用 MessageDigest 但未调用 update() 传入数据",
+        "依赖密码学 Provider 的默认行为",
+        "代码逻辑表面正确但实际安全性不足",
+        "密钥长度在不同环境中可能不一致",
+        "可能生成低于安全要求的密钥（如128位而非256位）",
+        "加密或摘要强度下降，影响安全性和兼容性"
+      ],
+      "related_exploit": [
+        "WeakKeyGeneration",
+        "InsecureCryptographicConfiguration",
+        "DigestOfEmptyInput",
+        "ProviderDependentBehavior",
+        "CryptographicMisuse"
+      ]
+    },
+    {
+      "name": "Java_NotUsingRandomIVWithCBCMode",
+      "language": "Java",
+      "category": "ConfigurationFlaw",
+      "pattern": "在CBC模式下使用对称加密算法（如AES/CBC/PKCS5Padding）时，初始化向量（IV）被硬编码为固定值（如全0字节数组），未使用SecureRandom生成随机且不可预测的IV，导致相同明文在相同密钥下产生可预测的密文模式，破坏CBC模式的语义安全性，易受密文模式分析、选择明文攻击和重放攻击",
+      "vulnerability_id": "CWE329",
+      "package": "javax.crypto.spec.IvParameterSpec",
+      "affected_versions": "所有版本",
+      "vuln_type": [
+        "Not Using Random IV with CBC Mode",
+        "Cryptographic Misconfiguration",
+        "CBC Mode Vulnerability",
+        "IV Reuse"
+      ],
+      "cve": "",
+      "ghsa": "",
+      "symptoms": [
+        "初始化向量以字节数组形式硬编码",
+        "多个加密操作复用相同 IV",
+        "使用 AES/CBC/PKCS5Padding 等 CBC 模式",
+        "IV 未通过 SecureRandom 生成",
+        "相同明文在相同密钥下产生可预测的密文模式",
+        "IV 被硬编码为全0或其他固定值",
+        "CBC 模式的语义安全性被破坏"
+      ],
+      "related_exploit": [
+        "CBCPatternLeakage",
+        "ChosenPlaintextAttack",
+        "ReplayAttack",
+        "CiphertextPatternAnalysis",
+        "CryptographicWeakness"
+      ]
+    },
+    {
+      "name": "Java_SameSeedInPRNG",
+      "language": "Java",
+      "category": "ConfigurationFlaw",
+      "pattern": "使用固定或可预测的种子（Seed）初始化伪随机数生成器（PRNG），显式调用SecureRandom.setSeed()传入硬编码字节数组，覆盖内部熵源，导致随机序列完全由种子决定，攻击者可复现相同随机序列，预测Session ID、Token、验证码、Nonce或密钥等安全随机值",
+      "vulnerability_id": "CWE336",
+      "package": "java.security.SecureRandom",
+      "affected_versions": "所有版本",
+      "vuln_type": [
+        "Same Seed in PRNG",
+        "Predictable Random Sequence",
+        "Cryptographic Weakness",
+        "Random Number Generator Misuse"
+      ],
+      "cve": "",
+      "ghsa": "",
+      "symptoms": [
+        "使用 SecureRandom 但显式调用 setSeed()",
+        "Seed 为硬编码常量或固定字节数组",
+        "随机数生成结果在多次运行中保持一致",
+        "随机值被直接输出或用于程序逻辑",
+        "Seed 通过抽象方法在类之间传播（81_variant）",
+        "随机序列完全由 Seed 决定",
+        "显式调用 setSeed() 覆盖内部熵源"
+      ],
+      "related_exploit": [
+        "PredictableRandomSequence",
+        "SessionTokenPrediction",
+        "CryptographicWeakness",
+        "PredictableTokenGeneration",
+        "SessionHijacking",
+        "CryptographicFailure"
+      ]
+    },
+    {
+      "name": "Java_WeakPRNG",
+      "language": "Java",
+      "category": "ConfigurationFlaw",
+      "pattern": "在安全敏感场景（如会话ID、令牌、验证码、密钥材料）中使用非密码学安全的伪随机数生成器，包括Math.random()和java.util.Random，这些PRNG基于可预测的线性同余算法，攻击者可通过少量输出样本推测内部状态，预测后续随机值，导致认证绕过、会话劫持或令牌伪造",
+      "vulnerability_id": "CWE338",
+      "package": "java.lang.Math",
+      "affected_versions": "所有版本",
+      "vuln_type": [
+        "Use of Cryptographically Weak PRNG",
+        "Predictable Random Number Generator",
+        "Cryptographic Misconfiguration",
+        "Insecure Randomness"
+      ],
+      "cve": "",
+      "ghsa": "",
+      "symptoms": [
+        "使用 Math.random() 生成随机数",
+        "使用 java.util.Random 生成随机数",
+        "随机值被直接输出或用于后续逻辑",
+        "未使用 java.security.SecureRandom",
+        "代码存在多种控制流变体（01 / 02）",
+        "随机数用于安全敏感场景",
+        "PRNG基于线性同余或可预测算法",
+        "攻击者可通过少量输出推测后续随机值"
+      ],
+      "related_exploit": [
+        "PredictableTokenGeneration",
+        "SessionHijacking",
+        "AuthenticationBypass",
+        "TokenPrediction",
+        "SessionFixation"
+      ]
+    },
+    {
+      "name": "Java_UnsaltedOneWayHash",
+      "language": "Java",
+      "category": "ConfigurationFlaw",
+      "pattern": "使用单向哈希算法（如SHA-512）对密码或敏感数据进行哈希时，未添加随机盐值（Salt），导致相同输入产生相同输出，易受彩虹表攻击、字典攻击和预计算哈希链攻击，攻击者可快速恢复原始密码或敏感数据",
+      "vulnerability_id": "CWE759",
+      "package": "java.security.MessageDigest",
+      "affected_versions": "所有版本",
+      "vuln_type": [
+        "Unsalted One-Way Hash",
+        "Password Storage Misconfiguration",
+        "Cryptographic Flaw",
+        "Credential Exposure"
+      ],
+      "cve": "",
+      "ghsa": "",
+      "symptoms": [
+        "使用 MessageDigest.getInstance(\"SHA-512\") 等哈希算法",
+        "直接调用 digest() 对原始数据进行哈希",
+        "未调用 hash.update() 添加随机盐",
+        "未使用 SecureRandom 生成随机盐值",
+        "相同输入始终产生相同输出",
+        "哈希结果可被预计算攻击利用",
+        "密码存储未遵循加盐原则"
+      ],
+      "related_exploit": [
+        "RainbowTableAttack",
+        "DictionaryAttack",
+        "PasswordCracking",
+        "OfflineBruteForce",
+        "CredentialRecovery"
+      ]
+    },
+    {
+      "name": "Java_PredictableSaltOneWayHash",
+      "language": "Java",
+      "category": "ConfigurationFlaw",
+      "pattern": "使用单向哈希算法（如SHA-512）对密码或敏感数据进行加盐哈希时，盐值来源于可预测的伪随机数生成器java.util.Random，而非密码学安全的SecureRandom。由于Random的种子可被枚举或推测，攻击者可重现盐值并进行离线暴力破解，使加盐机制失效",
+      "vulnerability_id": "CWE760",
+      "package": "java.util.Random",
+      "affected_versions": "所有版本",
+      "vuln_type": [
+        "Predictable Salt One-Way Hash",
+        "Password Storage Misconfiguration",
+        "Cryptographic Flaw",
+        "Credential Exposure"
+      ],
+      "cve": "",
+      "ghsa": "",
+      "symptoms": [
+        "使用 java.util.Random 生成盐值",
+        "调用 hash.update() 添加盐",
+        "未使用 SecureRandom",
+        "最终调用 MessageDigest.digest() 生成哈希",
+        "盐值可被预测或复现",
+        "Random基于线性同余算法，种子可枚举",
+        "加盐机制因盐值可预测而失效"
+      ],
+      "related_exploit": [
+        "OfflineBruteForce",
+        "PredictableSaltReproduction",
+        "CredentialRecovery",
+        "OfflinePasswordCracking",
+        "SaltReproductionAttack",
+        "CredentialDisclosure"
       ]
     }
     ]
