@@ -361,6 +361,411 @@
           "LogicBypass.AuthorizationViaProtoPollution",
           "DataInjection.DangerousFormDataFields"
         ]
+      },
+      {
+        "name": "ViteRSCPluginDevServerRCE",
+        "language": "TypeScript",
+        "category": "Injection",
+        "pattern": "@vitejs/plugin-rsc 插件的开发服务器在处理客户端请求时，loadServerAction、decodeReply、decodeAction 等函数将用户可控的请求参数直接作为动态导入（`import()`）的模块 URL，且未对导入地址做任何安全校验。攻击者可构造 `data:text/javascript` 等伪协议格式的恶意 URL，触发动态导入逻辑直接执行任意 JavaScript 代码，实现远程代码执行。漏洞无需身份验证，仅需能访问开发服务器网络即可触发。",
+        "vulnerability_id": "GHSA-j76j-5p5g-9wfr",
+        "package": "@vitejs/plugin-rsc",
+        "affected_versions": "<=0.5.5",
+        "vuln_type": [
+          "Code Injection",
+          "Remote Code Execution",
+          "Dynamic Import Vulnerability",
+          "CWE-94"
+        ],
+        "cve": "CVE-2025-67489",
+        "ghsa": "GHSA-j76j-5p5g-9wfr",
+        "symptoms": [
+          "使用 @vitejs/plugin-rsc 版本 <=0.5.5",
+          "开发服务器暴露后可被公网/内网直接访问",
+          "loadServerAction、decodeReply、decodeAction函数处理请求头/请求体输入",
+          "直接使用用户可控输入作为动态导入的模块URL",
+          "未校验导入URL的协议、格式与可信来源",
+          "允许data:text/javascript等伪协议URL执行动态导入",
+          "漏洞仅影响开发环境，生产环境无此风险",
+          "攻击者无需账号、令牌等身份凭证即可发起攻击"
+        ],
+        "related_exploit": [
+          "CodeInjection.UnsanitizedDynamicImport",
+          "RCE.DevServerUnauthExec",
+          "InputValidation.MissingURLSanitization",
+          "ModuleImport.UnrestrictedSource"
+        ]
+      },
+      {
+        "name": "MuiXDataGridStoredXSS",
+        "language": "TypeScript",
+        "category": "Injection",
+        "pattern": "@mui/x-data-grid 系列组件在渲染用户可控的表格单元格数据时，未对输入做 HTML 转义处理，直接通过 `dangerouslySetInnerHTML` 或 `innerHTML` 将输入解析为 DOM 内容。攻击者可向表格注入包含 JavaScript 的恶意数据，当其他用户访问包含该表格的页面时，恶意脚本自动执行，实现存储型 XSS 攻击。漏洞影响 @mui/x-data-grid 全系列（基础版/Pro版/Premium版）及通过 Open WebUI 等使用该组件的应用。",
+        "vulnerability_id": "GHSA-8wvc-869r-xfqf",
+        "package": "@mui/x-data-grid",
+        "affected_versions": "<6.20.0 || >=7.0.0-beta.0 <7.0.0-beta.5",
+        "vuln_type": [
+          "Cross-site Scripting",
+          "Stored XSS",
+          "DOM-based XSS",
+          "CWE-79"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-8wvc-869r-xfqf",
+        "symptoms": [
+          "使用 @mui/x-data-grid 版本 <6.20.0 或 <7.0.0-beta.5",
+          "表格单元格支持展示用户提交的自定义内容",
+          "组件使用 dangerouslySetInnerHTML 或 innerHTML 直接渲染单元格数据",
+          "未对包含 `<script>`、`<img onerror>` 等标签的输入做过滤/转义",
+          "恶意数据存储后，其他用户访问表格即可触发脚本执行",
+          "漏洞影响 @mui/x-data-grid 全系列（基础版/Pro版/Premium版）",
+          "仅影响前端渲染，无服务端代码执行风险，但可窃取前端敏感信息"
+        ],
+        "related_exploit": [
+          "XSS.StoredUserInputRendering",
+          "Frontend.UnsanitizedDOMInsertion",
+          "InputValidation.MissingHTMLEscaping",
+          "CWE-79.ImproperNeutralizationOfInputForWebPage"
+        ]
+      },
+      {
+        "name": "VegaExpressionXSS",
+        "language": "TypeScript",
+        "category": "Injection",
+        "pattern": "Vega 可视化库的表达式求值机制存在安全设计缺陷，未限制表达式对全局对象的访问。当应用将 `vega` 库及 `vega.View` 实例挂载到全局 `window` 对象时，`VEGA_DEBUG` 全局变量会暴露 `CanvasHandler.prototype.on` 等内部方法。攻击者可构造恶意 Vega JSON 配置，在 `signals` 事件中将全局暴露的方法赋值给对象 `toString` 属性，并设置 `_handlerIndex` 为 `event.view.eval`。当 JavaScript 运算触发隐式 `toString` 调用时，会执行全局方法，最终通过 `eval` 执行恶意脚本，绕过 Vega 的“安全模式”表达式解释器，形成 DOM 跨站脚本攻击。",
+        "vulnerability_id": "GHSA-7f2v-3qq3-vvjf",
+        "package": "vega",
+        "affected_versions": "<6.2.0",
+        "vuln_type": [
+          "Cross-site Scripting",
+          "DOM-based XSS",
+          "Expression Injection",
+          "CWE-79"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-7f2v-3qq3-vvjf",
+        "symptoms": [
+          "Vega 受影响版本：vega < 6.2.0、vega-expression < 6.1.0/<5.2.1、vega-interpreter <2.2.1/<1.2.1",
+          "应用将 vega 库及 vega.View 实例挂载到全局 window 对象",
+          "应用支持用户自定义 Vega JSON 配置，非仅内置源码配置",
+          "VEGA_DEBUG 全局变量被启用并可通过 window 访问",
+          "表达式求值使用 AST evaluator 模式，漏洞未被该模式阻断",
+          "加载恶意 Vega JSON 配置后，触发鼠标移动等事件会弹出脚本执行弹窗",
+          "通过 window.VEGA_DEBUG 可直接访问 vega 内部组件及方法",
+          "恶意脚本可获取 document.cookie、localStorage 等用户敏感信息",
+          "重点关注 CWE-79（跨站脚本）漏洞类型"
+        ],
+        "related_exploit": [
+          "XSS.DOMBased",
+          "InputValidationFlaw.UnsanitizedExpression",
+          "CodeExecution.ArbitraryJS",
+          "DataTheft.CookieStealing"
+        ]
+      },
+      {
+        "name": "OpenWebUIStoredXSS",
+        "language": "TypeScript",
+        "category": "Injection",
+        "pattern": "Open WebUI 的富文本提示词插入功能存在存储型 DOM XSS 漏洞。当启用「Insert Prompt as Rich Text」设置时，应用将用户自定义的提示词内容经 `marked.parse()` 转换为 HTML 后，未做任何 XSS 净化处理，直接通过 `innerHTML` 赋值注入 DOM。攻击者可构造含恶意 JavaScript 的提示词并存储，当受害者通过 `/` 命令调用该提示词时，恶意代码被浏览器解析执行。普通用户触发可导致会话令牌泄露、账户劫持（ATO）；管理员触发时，恶意代码可调用 Open WebUI 的 Functions 接口创建并执行含系统命令的 Python 函数，实现服务器远程代码执行（RCE）。",
+        "vulnerability_id": "GHSA-w7xj-8fx7-wfch",
+        "package": "open-webui",
+        "affected_versions": "<=0.6.34",
+        "vuln_type": [
+          "Cross-site Scripting",
+          "Stored XSS",
+          "DOM-based XSS",
+          "CWE-79"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-w7xj-8fx7-wfch",
+        "symptoms": [
+          "受影响版本：open-webui <= 0.6.34",
+          "应用启用「Insert Prompt as Rich Text」富文本插入设置（默认关闭）",
+          "攻击者拥有提示词创建权限（需 USER_PERMISSIONS_WORKSPACE_PROMPTS_ACCESS）",
+          "漏洞触发需受害者通过 / 命令调用恶意提示词（用户交互必要）",
+          "调用恶意提示词后，浏览器弹出 alert 弹窗或执行非预期 JavaScript 操作",
+          "本地存储中的 auth_token 等会话令牌被非法读取并发送至外部服务器",
+          "管理员触发后，服务器新增未知 Python 函数，包含 os.system 等系统命令调用",
+          "服务器日志中存在来自受害者浏览器的异常 /api/v1/functions/create 请求",
+          "重点关注 CWE-79（跨站脚本）漏洞类型，衍生风险含 CWE-78（命令注入）"
+        ],
+        "related_exploit": [
+          "XSS.StoredDOM",
+          "ATO.AccountHijack",
+          "RCE.RemoteCodeExecution",
+          "DataTheft.SessionToken",
+          "CommandInjection.PythonFunction"
+        ]
+      },
+      {
+        "name": "TypeORMSQLInjectionByObjectParse",
+        "language": "TypeScript",
+        "category": "Injection",
+        "pattern": "TypeORM 使用 mysql/mysql2 驱动时，未显式配置 `stringifyObjects: true`，导致底层 sqlstring 库将对象类型的用户输入错误拆解为 SQL 表达式。开发者若直接将未过滤的前端输入（如 `req.body`）传入 `repository.save/update` 方法，攻击者可构造嵌套对象格式的 Payload（如 `{ city: { name: 'Riga', role: 'admin' } }`），使 sqlstring 将其拆解为额外的 SQL 列赋值语句（如 `city = name = 'Riga', role = 'admin'`），突破字段权限限制，实现未授权修改数据库任意列。",
+        "vulnerability_id": "GHSA-q2pj-6v73-8rgj",
+        "package": "typeorm",
+        "affected_versions": "<0.3.26",
+        "vuln_type": [
+          "SQL Injection",
+          "ORM Injection",
+          "Object Parse Injection",
+          "CWE-89"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-q2pj-6v73-8rgj",
+        "symptoms": [
+          "使用 TypeORM 版本低于 0.3.26，且使用 mysql/mysql2 驱动连接数据库",
+          "开发者未对传入 save/update 方法的参数做字段白名单校验，直接使用解构的用户输入",
+          "恶意 Payload 为嵌套对象格式（如 city[name]=Riga&city[role]=admin），可被 sqlstring 拆解为多列赋值的 SQL 表达式",
+          "执行更新操作后，数据库中出现非预期列的修改（如未授权修改用户 role 字段为 admin）",
+          "SQL 语句拼接结果包含额外的列赋值（如 SET `city` = `name` = 'Riga', `role` = 'admin'），无语法错误且可正常执行",
+          "重点关注 SQLInjection 漏洞类型，尤其是对象输入解析导致的列注入"
+        ],
+        "related_exploit": [
+          "SQLInjection.UnsanitizedUserInput",
+          "ORMConfigurationFlaw.StringifyObjectsMissing",
+          "InputValidationFlaw.NoFieldWhitelist",
+          "SQLInjection.ObjectToSQLExpressionParse"
+        ]
+      },
+      {
+        "name": "UptimeKumaNotificationSSTI",
+        "language": "TypeScript",
+        "category": "Injection",
+        "pattern": "Uptime Kuma 2.0.0-dev.0 版本的通知模块存在服务器端模板注入漏洞。Webhook、Telegram 等通知类型支持自定义请求体配置，用户输入的自定义内容会通过 `renderTemplate()` 函数直接传递给 Liquid 模板引擎解析。由于该函数未对用户输入进行消毒，且 Liquid 引擎未启用沙箱限制（未禁用 `render` 等危险指令），攻击者（需已认证）可注入恶意模板标签（如 `{% render '/etc/passwd' %}`），触发服务器读取任意文件，泄露敏感信息（如系统配置、凭证文件）。该漏洞同时触发 CWE-36（绝对路径遍历）和 CWE-1336（模板引擎特殊元素未中和）两类弱点。",
+        "vulnerability_id": "GHSA-vffh-c9pq-4crh",
+        "package": "uptime-kuma",
+        "affected_versions": "2.0.0-dev.0",
+        "vuln_type": [
+          "SSTI",
+          "Server-side Template Injection",
+          "Path Traversal",
+          "CWE-1336",
+          "CWE-36"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-vffh-c9pq-4crh",
+        "symptoms": [
+          "使用 Uptime Kuma 2.0.0-dev.0 版本，且配置了 Webhook 或 Telegram 通知",
+          "通知类型启用“Custom Body”（自定义请求体）功能",
+          "代码中存在 renderTemplate() 函数直接接收用户编辑的字段（如 webhookCustomBody）",
+          "Liquid 模板引擎实例化时未配置安全限制（如禁用文件读取指令）",
+          "服务器返回敏感文件内容（如 /etc/passwd）或模板语法执行结果",
+          "发送测试通知后，webhook 接收端收到服务器本地文件内容",
+          "关联 CWE-36（绝对路径遍历）和 CWE-1336（模板引擎特殊元素未中和）漏洞类型",
+          "CVSS 3.1 评分为 6.5（中等严重）"
+        ],
+        "related_exploit": [
+          "SSTI.LiquidTemplateInjection",
+          "PathTraversal.AbsolutePath",
+          "InputValidation.Failure",
+          "TemplateEngine.UnrestrictedSandbox",
+          "SSTI.FileRead.Liquid",
+          "PathTraversal.Absolute",
+          "TemplateEngine.UnsanitizedInput",
+          "PostAuth.Vulnerability"
+        ]
+      },
+      {
+        "name": "sveltekitSuperformsPrototypePollution",
+        "language": "TypeScript",
+        "category": "Injection",
+        "pattern": "sveltekit-superforms <=2.27.3 版本的 `parseFormData` 函数在处理表单数据时存在原型污染漏洞。该函数通过 `__superform_json` 参数解析 JSON 数据，并通过 `__superform_file_` 和 `__superform_files_` 前缀的参数处理文件上传。在解析这些参数时，`setPaths` 函数未过滤 `__proto__`、`prototype` 等危险关键字，允许攻击者通过构造 `__superform_file___proto__.xxx` 格式的参数，将恶意属性注入 `Object.prototype`。若下游应用依赖受污染的原型对象（如使用 `nodemailer` 发送邮件），可触发 Gadget 链实现远程代码执行（RCE）；即使无 Gadget，也可能导致拒绝服务（DoS）、类型混淆等危害。",
+        "vulnerability_id": "GHSA-hwmc-4c8j-xxj7",
+        "package": "sveltekit-superforms",
+        "affected_versions": "<=2.27.3",
+        "vuln_type": [
+          "Prototype Pollution",
+          "CWE-1321",
+          "FormData Parsing Vulnerability",
+          "Gadget Chain RCE"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-hwmc-4c8j-xxj7",
+        "symptoms": [
+          "使用 sveltekit-superforms <=2.27.3 版本，且通过 superValidate 函数处理表单数据",
+          "表单提交包含 __superform_json 参数（值为 JSON 格式），且存在 __superform_file_ 或 __superform_files_ 前缀的参数",
+          "应用中使用依赖对象原型的下游库（如 nodemailer、lodash 等）",
+          "系统出现全局行为异常（如 toString 方法失效、函数执行异常、无权限操作成功）",
+          "表单提交后系统出现全局函数失效（如 toString 返回异常值）",
+          "下游依赖库（如 nodemailer）执行异常，出现非预期命令执行",
+          "关联 CWE-1321（原型污染），CVSS v4 评分为 8.3（高危）"
+        ],
+        "related_exploit": [
+          "PrototypePollution.ObjectPrototypeInjection",
+          "InputValidation.Failure",
+          "GadgetChain.RCE",
+          "FormDataParsing.UnsanitizedInput",
+          "PrototypePollution.ObjectInjection",
+          "GadgetChain.NodemailerRCE",
+          "PostExploitation.RCE"
+        ]
+      },
+      {
+        "name": "FlowiseSupabaseFilterInjection",
+        "language": "TypeScript",
+        "category": "Injection",
+        "pattern": "Flowise 的 Supabase 向量存储节点存在多类型注入漏洞。节点将用户可控的 `supabaseRPCFilter` 参数直接传入 `FilterParser.parseFilterString()` 解析，未做任何前置校验（长度限制、危险字符过滤、Unicode 解码校验），且解析结果直接作用于 PostgreSQL（pgvector）数据库的 RPC 查询，无二次校验。攻击者可构造多种恶意 payload：包含 SQL 注入字符（如 `' OR 1=1 --`）篡改查询逻辑；通过 Unicode 编码（如 `eval\\u0028`）绕过关键词拦截执行任意代码；构造超长过滤链触发拒绝服务；若 Supabase 未配置 RLS，还可越权访问其他用户的私有向量数据。",
+        "vulnerability_id": "GHSA-7944-7c6r-55vv",
+        "package": "flowise",
+        "affected_versions": "<=3.0.5",
+        "vuln_type": [
+          "SQL Injection",
+          "Remote Code Execution",
+          "Denial of Service",
+          "Access Control Bypass",
+          "CWE-89",
+          "CWE-94",
+          "CWE-400",
+          "CWE-285"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-7944-7c6r-55vv",
+        "symptoms": [
+          "用户可自定义 supabaseRPCFilter 字符串配置过滤规则",
+          "FilterParser 仅拦截 eval/process 等明文字符，未处理 Unicode 编码绕过",
+          "解析后的过滤函数直接作用于 PostgreSQL（pgvector）数据库查询",
+          "supabaseRPCFilter 无长度限制，可构造超长过滤链触发 DoS",
+          "输入包含 '、;、-- 等 SQL 特殊字符时，未被转义直接拼接进数据库查询",
+          "未配置 RLS 时，恶意过滤条件可跳过 user_id 等权限校验，访问所有向量数据",
+          "重点关注 SQLInjection、RLS 绕过漏洞类型"
+        ],
+        "related_exploit": [
+          "InputValidation.Failure.UnfilteredUserInput",
+          "SQLInjection.PostgreSQLVectorStore",
+          "CodeExecution.UnicodeBypass",
+          "DoS.LongFilterChainParsing",
+          "AccessControl.Bypass.RLS"
+        ]
+      },
+      {
+        "name": "CommandInjection_interactive-git-checkout",
+        "language": "JavaScript",
+        "category": "Injection",
+        "pattern": "interactive-git-checkout 包（≤1.1.4）存在命令注入漏洞。工具接收用户输入的 Git 分支名 `targetBranch` 后，使用 `child_process.exec()` 通过字符串拼接方式执行 `git checkout ${targetBranch}` 命令。`exec()` 会启动系统 Shell 解析整个命令字符串，而用户输入未做任何过滤或验证，允许包含 `;`、`&&`、`||` 等 Shell 特殊字符。攻击者可输入恶意分支名（如 `hello ; echo 'pwned' > /tmp/proof.txt; #`），注入任意系统命令以当前用户权限执行，导致信息泄露、文件篡改、恶意代码执行等严重后果。",
+        "vulnerability_id": "GHSA-4wcm-7hjf-6xw5",
+        "package": "interactive-git-checkout",
+        "affected_versions": "<=1.1.4",
+        "vuln_type": [
+          "Command Injection",
+          "OS Command Injection",
+          "Shell Injection",
+          "CWE-78"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-4wcm-7hjf-6xw5",
+        "symptoms": [
+          "使用 child_process.exec() 函数执行系统命令，而非更安全的 spawn()",
+          "用户输入的 targetBranch 未做任何过滤，允许包含 ;、&&、|| 等 Shell 特殊字符",
+          "命令构造采用字符串拼接，而非参数数组传递方式",
+          "无输入字符集白名单限制，仅依赖用户输入的合法性",
+          "工具以当前用户权限运行，无最小权限隔离机制",
+          "输入允许包含 Shell 特殊字符且无过滤",
+          "无官方修复版本"
+        ],
+        "related_exploit": [
+          "InputValidationError.UncheckedUserInput",
+          "CommandExecution.UnsafeStringConcatenation",
+          "ShellInjection.SpecialCharUnescaped",
+          "PrivilegeEscalation.ViaCommandInjection"
+        ]
+      },
+      {
+        "name": "NodeTarLinkPathInjection",
+        "language": "TypeScript",
+        "category": "Injection",
+        "pattern": "node-tar ≤7.5.2 版本在处理硬链接（Link）和符号链接（SymbolicLink）的 `linkpath` 字段时存在路径清理缺陷。硬链接处理使用 `path.resolve(this.cwd, entry.linkpath)` 计算目标路径，未校验 `entry.linkpath` 是否为绝对路径，导致绝对路径直接忽略提取根目录（`this.cwd`），可创建指向系统任意文件的硬链接；符号链接处理直接将未验证的 `entry.linkpath` 传给 `fs.symlink`，未过滤绝对路径或路径遍历字符（如 `../`），导致符号链接注入。即使配置了默认安全选项 `preservePaths: false`，仍可通过硬链接绕过限制，实现任意文件覆盖和符号链接注入。",
+        "vulnerability_id": "CVE-2026-23745",
+        "package": "tar",
+        "affected_versions": "≤7.5.2",
+        "vuln_type": [
+          "Path Traversal",
+          "Arbitrary File Overwrite",
+          "Symlink Poisoning",
+          "CWE-22",
+          "CWE-59"
+        ],
+        "cve": "CVE-2026-23745",
+        "ghsa": "",
+        "symptoms": [
+          "项目使用 node-tar 版本 ≤7.5.2",
+          "恶意 TAR 包含绝对路径 linkpath 的硬链接，提取后可覆盖系统敏感文件（如 /etc/passwd）",
+          "恶意 TAR 包含绝对路径/路径遍历的符号链接，提取后可创建指向敏感路径的符号链接",
+          "核心代码中存在 `path.resolve(this.cwd, entry.linkpath)` 未校验绝对路径的逻辑",
+          "默认安全配置（preservePaths: false）下仍可通过硬链接覆盖提取根外的文件",
+          "重点关注 PathTraversal.ArbitraryFileOverwrite、SymlinkPoisoning 漏洞类型"
+        ],
+        "related_exploit": [
+          "PathTraversal.LinkPathUnsanitized",
+          "ArbitraryFileOverwrite.HardlinkBypass",
+          "SymlinkPoisoning.AbsolutePathInjection",
+          "InputValidationFlaw.LinkPathCleanupMissing",
+          "CI/CDRCE.FileOverwrite"
+        ]
+      },
+      {
+        "name": "PsiTransferZipSlipPathTraversal",
+        "language": "JavaScript",
+        "category": "Injection",
+        "pattern": "PsiTransfer v2.3.0 在生成 TAR 归档文件时存在 Zip Slip 路径遍历漏洞。系统在处理用户上传的文件时，直接使用用户可控的 `metadata.name` 作为归档条目名称，未对路径遍历字符（如 `../`、`./`）进行任何净化处理。攻击者可构造包含 `../../../` 序列的恶意文件名，通过未授权上传接口（默认 `uploadPass` 为 `false`）上传恶意文件。当受害者下载并解压该 TAR 归档时，文件会被写入到攻击者指定的系统任意可写位置（如 `/tmp/evil.txt`、`~/.ssh/authorized_keys` 等），导致任意文件写入，进而可能实现远程代码执行、权限维持等攻击。",
+        "vulnerability_id": "GHSA-xphh-5v4r-r3rx",
+        "package": "psitransfer",
+        "affected_versions": "2.3.0",
+        "vuln_type": [
+          "Path Traversal",
+          "Zip Slip",
+          "Arbitrary File Write",
+          "CWE-22"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-xphh-5v4r-r3rx",
+        "symptoms": [
+          "用户上传文件的文件名支持包含 ../、./ 等路径分隔符",
+          "创建 TAR 归档条目时直接使用未处理的用户提交文件名",
+          "归档下载功能未校验文件名的路径合法性",
+          "默认配置下 uploadPass 为 false，无需授权即可上传文件",
+          "仅校验文件名元数据的存在性，未过滤 ../、/ 等路径分隔符",
+          "解压恶意归档后，文件会出现在受害者文件系统的非预期目录（如 /tmp/、用户主目录等）",
+          "重点关注 ZipSlip/PathTraversal 漏洞类型"
+        ],
+        "related_exploit": [
+          "InputValidationError.UnsanitizedFilename",
+          "PathTraversal.ZipSlip",
+          "AccessControlFlaw.UnauthorizedFileUpload",
+          "FileHandlingFlaw.ArchivePathInjection"
+        ]
+      },
+      {
+        "name": "FlowisePathTraversalFileRead",
+        "language": "TypeScript",
+        "category": "Injection",
+        "pattern": "Flowise 3.0.5 版本存在任意文件读取漏洞，由参数校验缺失、路径验证缺陷和信息泄露组合而成。`streamStorageFile()` 函数中，`chatId` 参数无任何校验，可传入 `../../` 等路径遍历符；文件不存在时生成的 `fallbackPath` 未做根目录校验，可跳出存储目录；同时 `/api/v1/vector/upsert/` 接口的错误信息会泄露合法的 `chatflowId`。攻击者通过构造包含 `../.././` 的 `chatId`，调用 `/api/v1/get-upload-file` 或 `/api/v1/openai-assistants-file/download` 接口，可读取 `/root/.flowise/` 下的敏感文件（如 `database.sqlite`，包含 API 密钥等），fallback 逻辑的文件移动/删除还会破坏服务可用性。",
+        "vulnerability_id": "GHSA-99pg-hqvx-r4gf",
+        "package": "flowise",
+        "affected_versions": "3.0.5",
+        "vuln_type": [
+          "Path Traversal",
+          "Arbitrary File Read",
+          "Information Disclosure",
+          "CWE-22",
+          "CWE-200"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-99pg-hqvx-r4gf",
+        "symptoms": [
+          "chatflowId 做 UUID 校验+路径遍历字符过滤，fileName 做路径清洗",
+          "chatId 无任何校验，可传入 ../../ 等路径遍历符",
+          "fallbackPath 未做根目录校验，可跳出存储目录访问敏感文件",
+          "/api/v1/vector/upsert/ 接口错误信息泄露合法 chatflowId",
+          "未授权用户可读取 /root/.flowise/database.sqlite，获取 API 密钥等敏感数据",
+          "读取文件后原文件会被移动/删除，导致服务后续无法访问该文件",
+          "仅 Flowise 3.0.5 版本受影响"
+        ],
+        "related_exploit": [
+          "InputValidationError.UncheckedChatIdParameter",
+          "PathValidationFlaw.FallbackPathNoCheck",
+          "InformationDisclosure.ChatflowIdLeak",
+          "FileSystemAttack.ArbitraryFileRead"
+        ]
       }
     ],
 
@@ -395,6 +800,169 @@
           "SupplyChainAttack.LifecycleScriptExecution",
           "ConfigurationFlaw.IgnoredSecurityOption",
           "ExecutionFlaw.UnintendedScriptRun"
+        ]
+      }
+    ],
+
+    "LogicFlaw": [
+      {
+        "name": "AstroURLManipulation",
+        "language": "TypeScript",
+        "category": "LogicFlaw",
+        "pattern": "Astro 框架服务端 `createRequest()` 函数在构建 URL 时，直接从请求头中读取 `x-forwarded-proto`、`x-forwarded-port` 等参数，未做任何合法性校验与净化，直接拼接生成 URL。攻击者可向这些请求头注入恶意 payload（如 `x:`、`?`、`//`、`https://evil.com?`），利用 WHATWG URL 解析规则篡改最终 URL 的协议、路径、主机等解析结果，导致中间件路由绕过、SSRF、CDN 缓存投毒、URL 污染等攻击。",
+        "vulnerability_id": "GHSA-hr2q-hp5q-x767",
+        "package": "astro",
+        "affected_versions": ">=2.16.0 <5.15.5",
+        "vuln_type": [
+          "URL Manipulation",
+          "Input Validation Flaw",
+          "Logic Flaw",
+          "Request Header Injection"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-hr2q-hp5q-x767",
+        "symptoms": [
+          "Astro 版本处于 >=2.16.0 且 <5.15.5 区间",
+          "框架启用按需渲染模式，非静态页面请求会触发 createRequest() 函数",
+          "应用通过中间件基于 context.url.pathname 做路由权限控制",
+          "服务器会复用 createRequest() 构建的 URL 发起外部网络请求",
+          "应用部署 CDN 服务，会缓存基于 URL 的响应结果",
+          "向 x-forwarded-proto 注入恶意 payload，可使 context.url.pathname 解析结果发生篡改",
+          "注入 javascript: 协议类 payload，可使页面生成含恶意脚本的 URL",
+          "重点关注 InputValidationFlaw.UnsanitizedUserControlledHeader 漏洞类型"
+        ],
+        "related_exploit": [
+          "AuthFlaw.MiddlewareRouteBypass",
+          "SSRF.CWE-918",
+          "DoS.CDNCachePoisoning",
+          "InputValidationFlaw.UnsanitizedHeaderInjection",
+          "WAFBypass.URLParsingAbuse"
+        ]
+      },
+      {
+        "name": "AxiosCacheInterceptorVaryBypass",
+        "language": "TypeScript",
+        "category": "LogicFlaw",
+        "pattern": "axios-cache-interceptor <1.11.1 版本存在缓存键生成逻辑缺陷。缓存键仅基于 URL 生成，未处理上游响应中的 `Vary: Authorization` 头，且未将 `Authorization` 请求头纳入缓存键计算。在多用户认证场景下，高权限用户先请求某 URL 生成包含敏感数据的缓存后，低权限用户请求相同 URL 时直接复用该缓存，无需经过上游服务的授权校验。这导致低权限用户可以越权获取高权限用户的敏感数据，完全绕过了基于 Authorization 头的访问控制机制。",
+        "vulnerability_id": "GHSA-x4m5-4cw8-vc44",
+        "package": "axios-cache-interceptor",
+        "affected_versions": "<1.11.1",
+        "vuln_type": [
+          "Cache Poisoning",
+          "Authorization Bypass",
+          "Logic Flaw",
+          "CWE-524"
+        ],
+        "cve": "CVE-2025-69202",
+        "ghsa": "GHSA-x4m5-4cw8-vc44",
+        "symptoms": [
+          "使用 axios-cache-interceptor 版本 <1.11.1",
+          "缓存键仅由 URL 生成，忽略 Authorization 请求头",
+          "未解析上游响应的 Vary 头来调整缓存键生成逻辑",
+          "服务端多用户场景下，不同认证令牌的同 URL 请求返回相同缓存响应",
+          "低权限用户可获取高权限用户的缓存数据",
+          "重点关注 CachePoisoning/AuthorizationBypass 漏洞类型"
+        ],
+        "related_exploit": [
+          "CacheLogicError.UnprocessedVaryHeader",
+          "AuthorizationFlaw.CacheReuseBetweenUsers",
+          "DataLeakage.CrossUserCacheSharing",
+          "CachePoisoning.UrlOnlyCacheKey"
+        ]
+      },
+      {
+        "name": "FastifyMiddiePathBypass",
+        "language": "TypeScript",
+        "category": "LogicFlaw",
+        "pattern": "@fastify/middie ≤9.0.3 版本存在中间件路径匹配逻辑缺陷。中间件注册时基于路径前缀（如 `/admin`）生成匹配正则，但匹配时使用**未解码的原始请求路径**（`req.url`）执行正则匹配，而底层 Fastify 路由系统会自动解码请求路径。攻击者可通过 URL 编码的路径（如 `/%61dmin` 替代 `/admin`）使中间件无法匹配而跳过，同时 Fastify 路由解码后能正常匹配路由处理函数，导致中间件的访问控制被完全绕过。该漏洞 CVSS 评分为 8.4（High），可导致受保护资源未授权访问。",
+        "vulnerability_id": "CVE-2026-22031",
+        "package": "@fastify/middie",
+        "affected_versions": "≤9.0.3",
+        "vuln_type": [
+          "Access Control Bypass",
+          "Path Matching Flaw",
+          "Logic Flaw",
+          "CWE-285"
+        ],
+        "cve": "CVE-2026-22031",
+        "ghsa": "",
+        "symptoms": [
+          "使用 @fastify/middie 版本 ≤9.0.3",
+          "通过 URL 编码的路径（如 /%61dmin）可访问受 /admin 中间件保护的端点",
+          "中间件注册逻辑使用 `fastify.use(pathPrefix, middleware)` 语法",
+          "核心代码中存在用 `req.url`（未解码）执行中间件路径正则匹配的逻辑",
+          "正常请求 /admin 被中间件拦截，但请求 /%61dmin 会返回受保护内容",
+          "修复版本中使用 Fastify 解码后的 `request.routerPath` 进行路径匹配"
+        ],
+        "related_exploit": [
+          "AccessControlBypass.URLHexEncoding",
+          "PathMatchingFlaw.UndecodedRequestPath",
+          "MiddlewareBypass.FastifyMiddie",
+          "InputValidationFlaw.URLDecodingMismatch"
+        ]
+      },
+      {
+        "name": "FlowiseAccountTakeover",
+        "language": "TypeScript",
+        "category": "LogicFlaw",
+        "pattern": "FlowiseAI/Flowise 的 flowise-ui 包账户管理模块存在身份验证设计缺陷。平台将已登录状态作为邮箱、密码等核心凭证修改的唯一校验条件，未对邮箱修改增加原邮箱的确认或验证码验证步骤，也未对密码修改增加原密码校验步骤。邮箱作为平台登录标识和密码重置的唯一恢复渠道，无验证篡改后可彻底掌控账户恢复路径。二者叠加使仅获取基础登录权限的攻击者可直接篡改账户核心凭证，实现永久的账户接管。",
+        "vulnerability_id": "GHSA-x39m-3393-3qp4",
+        "package": "flowise-ui",
+        "affected_versions": "受影响版本（需确认具体版本范围）",
+        "vuln_type": [
+          "Authentication Bypass",
+          "Account Takeover",
+          "Logic Flaw",
+          "CWE-306",
+          "CWE-287"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-x39m-3393-3qp4",
+        "symptoms": [
+          "flowise-ui 的 /account 页面支持已登录状态下直接修改邮箱",
+          "密码修改功能仅需输入新密码，无需验证原密码",
+          "邮箱为平台登录标识及密码重置的唯一恢复渠道",
+          "仅需基础登录权限即可执行账户核心凭证修改操作",
+          "邮箱、密码修改后无额外校验，仅简单提示更新成功",
+          "篡改邮箱后，可通过平台密码重置功能完全掌控账户登录与恢复路径",
+          "重点关注 AuthFlaw.MissingSecondaryAuth 漏洞类型"
+        ],
+        "related_exploit": [
+          "AuthFlaw.MissingSecondaryAuth",
+          "AuthFlaw.UnverifiedCredentialChange",
+          "AccessControlFlaw.InsufficientAuthForCriticalOp"
+        ]
+      },
+      {
+        "name": "FastifyExpressPathBypass",
+        "language": "TypeScript",
+        "category": "LogicFlaw",
+        "pattern": "@fastify/express ≤4.0.2 版本存在中间件路径匹配逻辑缺陷。中间件注册时基于路径前缀（如 `/admin`）进行拦截，但匹配时使用**未解码的原始请求路径**（`request.raw.url`）执行匹配，而底层 Fastify 路由系统会自动解码请求路径。攻击者可通过 URL 编码的路径（如 `/%61dmin` 替代 `/admin`）使中间件无法匹配而跳过，同时 Fastify 路由解码后能正常匹配路由处理函数，导致中间件的访问控制被完全绕过。该漏洞 CVSS 评分为 8.4（High），可导致受保护资源未授权访问。",
+        "vulnerability_id": "CVE-2026-22037",
+        "package": "@fastify/express",
+        "affected_versions": "≤4.0.2",
+        "vuln_type": [
+          "Access Control Bypass",
+          "Path Matching Flaw",
+          "Logic Flaw",
+          "CWE-285"
+        ],
+        "cve": "CVE-2026-22037",
+        "ghsa": "",
+        "symptoms": [
+          "使用 @fastify/express 版本 ≤4.0.2",
+          "通过 URL 编码的路径（如 /%61dmin）可访问受 /admin 中间件保护的端点",
+          "中间件注册逻辑使用 `fastify.use(pathPrefix, middleware)` 语法",
+          "核心代码中使用 `request.raw.url`（未解码）进行中间件路径匹配",
+          "正常请求 /admin 被中间件拦截，但请求 /%61dmin 会返回受保护内容",
+          "修复版本中使用 Fastify 解码后的 `request.routerPath` 进行路径匹配",
+          "重点关注 AccessControlBypass.URLEncoding 漏洞类型"
+        ],
+        "related_exploit": [
+          "AccessControlBypass.URLHexEncoding",
+          "PathMatchingFlaw.UndecodedRequestPath",
+          "MiddlewareBypass.FastifyExpressPlugin",
+          "InputValidationFlaw.URLDecodingMismatch"
         ]
       }
     ],
