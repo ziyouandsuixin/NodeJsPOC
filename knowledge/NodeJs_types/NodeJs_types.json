@@ -766,6 +766,38 @@
           "InformationDisclosure.ChatflowIdLeak",
           "FileSystemAttack.ArbitraryFileRead"
         ]
+      },
+      {
+        "name": "ShaJsInputValidationFailure",
+        "language": "TypeScript",
+        "category": "Injection",
+        "pattern": "sha.js ≤2.4.11 版本的 `update()` 方法存在输入验证缺失漏洞。该方法未对输入数据类型进行校验，允许传入非 `Buffer`/`string` 类型的任意对象。攻击者可构造恶意对象，利用 `_normalizeInput()` 错误解析对象的 `length` 属性，操纵哈希内部状态：1）传入 `{ length: -N }` 可回滚之前的哈希状态，等效于删除部分输入数据的影响；2）传入 `{ length: '1e99' }` 可导致函数无限挂起，触发拒绝服务；3）构造特定对象可生成哈希碰撞，破坏数据完整性机制。该漏洞 CVSS 评分为 9.1（Critical），可导致哈希状态回滚、DoS、哈希碰撞，在依赖哈希的加密系统中可能进一步推导私钥。",
+        "vulnerability_id": "GHSA-95m3-7q98-8xr5",
+        "package": "sha.js",
+        "affected_versions": "≤2.4.11",
+        "vuln_type": [
+          "Input Validation Failure",
+          "Hash Manipulation",
+          "Denial of Service",
+          "Cryptographic Flaw",
+          "CWE-20"
+        ],
+        "cve": "CVE-2025-9288",
+        "ghsa": "GHSA-95m3-7q98-8xr5",
+        "symptoms": [
+          "update() 未校验输入类型，接受非 Buffer/string 类型的任意对象",
+          "传入 { length: -x } 可回滚哈希内部状态，篡改哈希计算结果",
+          "构造特定对象可生成哈希碰撞，不同数据对应相同哈希值",
+          "传入 { length: '1e99' } 导致函数无限挂起，触发 DoS",
+          "受影响版本 ≤2.4.11，未对输入的类型、长度做安全限制",
+          "重点关注 CWE-20（Improper Input Validation）漏洞类型"
+        ],
+        "related_exploit": [
+          "HashManipulation.StateRewind",
+          "HashCollision.ForcedCollision",
+          "DoS.ResourceExhaustion",
+          "CryptographicFailure.PrivateKeyExtraction"
+        ]
       }
     ],
 
@@ -800,6 +832,75 @@
           "SupplyChainAttack.LifecycleScriptExecution",
           "ConfigurationFlaw.IgnoredSecurityOption",
           "ExecutionFlaw.UnintendedScriptRun"
+        ]
+      },
+      {
+        "name": "OpencodeUnAuthRCE",
+        "language": "TypeScript",
+        "category": "ConfigurationFlaw",
+        "pattern": "opencode-ai 核心服务文件 server.ts 存在多重配置缺陷叠加导致的严重漏洞：1）服务启动时开启无身份验证的 HTTP 服务器，所有接口均可未授权访问；2）配置 `Access-Control-Allow-Origin: *` 的宽松 CORS 策略，允许任意网站跨域请求；3）注册 `/session/:id/shell`（命令执行）、`/pty`（交互式终端）、`/file/content`（文件读取）三个高危端点，均无输入过滤、路径校验和权限控制；4）`--mdns` 参数使服务绑定 `0.0.0.0` 全网段地址并通过 Bonjour 广播，将攻击范围扩大至整个本地网络。攻击者无需任何权限，即可通过本地进程或恶意网站跨域请求，以当前用户权限执行任意系统命令、读取任意文件，实现对目标设备的完全控制。",
+        "vulnerability_id": "GHSA-vxw4-wv6m-9hhh",
+        "package": "opencode-ai",
+        "affected_versions": "受影响版本（需确认具体版本范围）",
+        "vuln_type": [
+          "Authentication Bypass",
+          "CORS Misconfiguration",
+          "Remote Code Execution",
+          "Path Traversal",
+          "Configuration Flaw",
+          "CWE-306",
+          "CWE-942",
+          "CWE-22"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-vxw4-wv6m-9hhh",
+        "symptoms": [
+          "server.ts 基于 Hono 框架启动 HTTP 服务，默认监听 4096+ 端口",
+          "服务无任何身份验证、token 校验、权限控制逻辑",
+          "配置 Access-Control-Allow-Origin: * 允许所有跨域请求",
+          "注册 /session/:id/shell 路由直接执行用户传入的 shell 命令",
+          "注册 /pty 路由创建交互式 bash 终端，无访问限制",
+          "注册 /file/content 路由读取用户指定路径的文件，无路径校验",
+          "--mdns 参数使服务绑定 0.0.0.0 并广播，本地网络可访问",
+          "重点关注未认证端点暴露、CORS 配置错误、命令注入、路径遍历类漏洞"
+        ],
+        "related_exploit": [
+          "UnAuthAccess.RCEEndpointExposure",
+          "CORS.MisconfigurationWildcard",
+          "CommandInjection.UnfilteredInput",
+          "PathTraversal.UnrestrictedFileRead",
+          "WebServer.LocalNetworkExposure"
+        ]
+      },
+      {
+        "name": "PlaywrightInsecureSSLVerification",
+        "language": "TypeScript",
+        "category": "ConfigurationFlaw",
+        "pattern": "Playwright <1.55.1 版本的 Mac 平台浏览器重装脚本（如 reinstall_chrome_stable_mac.sh）存在安全配置缺陷。脚本中使用 `curl -k`（--insecure）选项下载浏览器安装包，主动禁用了 SSL 证书验证，导致无法验证下载服务器的身份真实性。攻击者可在公共 Wi-Fi、不可信网络中实施中间人攻击，拦截下载请求并替换为恶意 .pkg 安装包。脚本随后通过 `sudo installer` 以 root 权限安装该恶意包，使攻击者获得系统的完全控制权。该漏洞本质是加密验证机制被主动禁用，违反了安全配置的最佳实践。",
+        "vulnerability_id": "Playwright-SSL-Bypass", 
+        "affected_versions": "<1.55.1",
+        "vuln_type": [
+          "SSL Verification Disabled",
+          "Man-in-the-Middle",
+          "Insecure Configuration",
+          "CWE-295",
+          "CWE-347"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "使用 Playwright <1.55.1 版本，且运行 Mac 平台的浏览器重装脚本（如 reinstall_chrome_stable_mac.sh）",
+          "脚本中包含 `curl -k` 命令下载 .pkg 格式安装包，并通过 `sudo installer` 特权安装",
+          "在公共 Wi-Fi、不可信网络环境中执行过该脚本",
+          "系统出现非预期进程、敏感数据泄露或被远程控制现象",
+          "关联 CWE-295（不当证书验证）和 CWE-347（加密签名验证不当）",
+          "CVSS v4 评分为 8.7（高危）"
+        ],
+        "related_exploit": [
+          "MitM.Attack.FileReplacement",
+          "CryptographicFailure.SSLVerificationDisabled",
+          "PrivilegedCodeExecution.MaliciousInstaller",
+          "InsecureNetwork.Download"
         ]
       }
     ],
@@ -963,6 +1064,272 @@
           "PathMatchingFlaw.UndecodedRequestPath",
           "MiddlewareBypass.FastifyExpressPlugin",
           "InputValidationFlaw.URLDecodingMismatch"
+        ]
+      },
+      {
+        "name": "SignalKJwtStealViaUnauthWebSocketPoll",
+        "language": "TypeScript",
+        "category": "LogicFlaw",
+        "pattern": "Signal K Server 存在两个可链式利用的未授权漏洞，组合后可实现 JWT 令牌窃取和认证绕过：1）当 `allow_readonly` 启用时，未认证用户可通过 WebSocket 连接 `serverEvents=all` 端点，获取服务器缓存的所有 `access_request` 事件，包含请求 ID、客户端标识、权限需求等关键信息；2）`/signalk/v1/access/requests/:id` 端点无需认证即可查询访问请求状态，当管理员批准请求后，响应会以明文返回已签发的 JWT 令牌。攻击者可通过 WebSocket 获取请求 ID，再通过状态端点轮询窃取令牌，无需任何前置认证即可实现权限劫持和认证绕过。",
+        "vulnerability_id": "GHSA-fq56-hvg6-wvm5",
+        "package": "signalk-server",
+        "affected_versions": "受影响版本（需确认具体版本范围）",
+        "vuln_type": [
+          "Authentication Bypass",
+          "JWT Theft",
+          "Information Disclosure",
+          "Logic Flaw",
+          "CWE-287",
+          "CWE-200"
+        ],
+        "cve": "CVE-2025-68620",
+        "ghsa": "GHSA-fq56-hvg6-wvm5",
+        "symptoms": [
+          "Signal K Server 启用 `allow_readonly` 配置（允许未认证用户只读访问）",
+          "WebSocket 端点 `serverEvents=all` 向未授权用户推送缓存的 `access_request` 事件",
+          "/signalk/v1/access/requests/:id` 端点无需认证即可查询请求状态及 JWT 令牌",
+          "`access_request` 事件包含完整的请求 ID 和权限详情，无权限过滤",
+          "攻击者可通过 WebSocket 获取请求 ID，再通过状态端点轮询窃取令牌",
+          "重点关注 AuthenticationBypass.UnauthEventLeak 漏洞类型"
+        ],
+        "related_exploit": [
+          "AuthenticationBypass.ChainVulnExploit",
+          "InformationDisclosure.UnauthWebSocketEvent",
+          "TokenStealing.JwtPolling",
+          "AccessControlFlaw.UnrestrictedStatusEndpoint",
+          "JwtStealing.UnauthPoll",
+          "WebSocketVuln.EventLeak"
+        ]
+      },
+      {
+        "name": "GraphQLModulesRaceCondition",
+        "language": "TypeScript",
+        "category": "LogicFlaw",
+        "pattern": "graphql-modules 2.2.1≤v<2.4.1 和 3.0.0≤v<3.1.1 版本存在竞态条件漏洞。单例 Provider（`@Injectable({ scope: Scope.Singleton })`）通过 `@ExecutionContext()` 注入的请求上下文缺乏隔离机制，多个并行请求触发同一单例时，后请求会覆盖先请求的上下文，导致先请求在异步操作后读取到错误的上下文数据。漏洞 CVSS 评分为 8.7（High），核心影响数据完整性，上下文含认证/权限信息时可能引发越权，高并发场景下触发概率显著升高。",
+        "vulnerability_id": "CVE-2026-23735",
+        "package": "graphql-modules",
+        "affected_versions": ">=2.2.1 <2.4.1 || >=3.0.0 <3.1.1",
+        "vuln_type": [
+          "Race Condition",
+          "Concurrency Flaw",
+          "Data Integrity",
+          "Logic Flaw",
+          "CWE-362"
+        ],
+        "cve": "CVE-2026-23735",
+        "ghsa": "GHSA-53wg-r69p-v3r7",
+        "symptoms": [
+          "项目使用 graphql-modules 版本为 2.2.1≤v<2.4.1 或 3.0.0≤v<3.1.1",
+          "存在单例 Provider（@Injectable({ scope: Scope.Singleton })）且通过 @ExecutionContext() 注入上下文",
+          "并行请求同一接口时，出现请求上下文数据串用（如用户标识混淆）",
+          "运行文档 PoC 脚本后，第一个请求的 after 字段返回 \"second\"，与预期 \"first\" 不符",
+          "漏洞触发需同时满足：单例 Provider + @ExecutionContext() 注入 + 并行请求",
+          "上下文混淆会导致业务数据错乱（如订单归属错误）或权限校验失效",
+          "重点关注 RaceCondition.ContextConfusion、DataIntegrity.SingletonSharedState 漏洞类型"
+        ],
+        "related_exploit": [
+          "RaceCondition.ParallelRequestContext",
+          "DataIntegrity.SingletonContextOverwrite",
+          "ResourceSharing.FailedIsolation",
+          "LogicFlaw.UnprotectedCriticalSection"
+        ]
+      },
+      {
+        "name": "DatabaseServerReadOnlyBypass",
+        "language": "TypeScript",
+        "category": "LogicFlaw",
+        "pattern": "@executeautomation/database-server <=1.1.0 版本的 `read_query` 工具存在访问控制逻辑缺陷。该工具意图通过只读模式限制仅允许 SELECT 查询，但仅通过简单的 SQL 语句前缀 `startsWith(\"SELECT\")` 进行校验。攻击者可构造以 SELECT 开头但包含危险操作的 SQL 语句：1）调用数据库系统函数（如 PostgreSQL 的 `pg_terminate_backend`、`pg_sleep`）引发 DoS；2）利用 pg 驱动支持的多查询特性，在 SELECT 后拼接其他 DML/DDL 语句；3）调用具有副作用的存储过程。这些操作完全绕过只读限制，导致数据库服务中断、敏感信息泄露或数据篡改。该漏洞本质是依赖客户端输入校验而非数据库级权限隔离的访问控制设计缺陷。",
+        "vulnerability_id": "GHSA-65hm-pwj5-73pw",
+        "package": "@executeautomation/database-server",
+        "affected_versions": "<=1.1.0",
+        "vuln_type": [
+          "Access Control Bypass",
+          "Logic Flaw",
+          "Authorization Bypass",
+          "CWE-284"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-65hm-pwj5-73pw",
+        "symptoms": [
+          "使用 @executeautomation/database-server <=1.1.0 版本，且启用 `read_query` 工具执行数据库操作",
+          "连接 PostgreSQL 等支持系统函数调用的数据库",
+          "SQL 语句以 `SELECT` 开头，但包含 `pg_terminate_backend`、`pg_sleep` 等系统函数或存储过程",
+          "支持多查询（以 `;` 分隔多个 SQL 语句），可在 SELECT 后拼接其他操作",
+          "数据库出现进程被终止、查询延迟、敏感信息泄露等异常",
+          "关联 CWE-284（不当访问控制）",
+          "CVSS v3.1 评分为 8.1（高危）"
+        ],
+        "related_exploit": [
+          "AccessControl.Bypass.PrefixCheck",
+          "SQL.Injection.SystemFunctionCall",
+          "DoS.DatabaseFunctionAbuse",
+          "InformationDisclosure.QueryMonitoring"
+        ]
+      }
+    ],
+
+    "ResourceManagementFlaw ":[
+      {
+        "name": "SerovalStackOverflowDoS",
+        "language": "TypeScript",
+        "category": "ResourceManagementFlaw",
+        "pattern": "seroval ≤1.4.0 版本在序列化极端深度的嵌套对象时，未设置递归深度限制。攻击者可构造数千层嵌套的对象（如 `{a:{b:{c:...}}}`），调用 `seroval.serialize()` 时，递归调用栈持续增长，超出 JavaScript 引擎的最大调用栈限制（通常 1000-10000 层），触发 `RangeError: Maximum call stack size exceeded` 错误，导致应用崩溃，造成拒绝服务（DoS）。修复版本（1.4.1）新增 `depthLimit` 参数，超限则主动抛错，阻断栈溢出路径。",
+        "vulnerability_id": "CVE-2026-24006",
+        "package": "seroval",
+        "affected_versions": "≤1.4.0",
+        "vuln_type": [
+          "Denial of Service",
+          "Stack Overflow",
+          "Resource Exhaustion",
+          "CWE-674",
+          "CWE-400"
+        ],
+        "cve": "CVE-2026-24006",
+        "ghsa": "",
+        "symptoms": [
+          "项目使用 seroval 版本 ≤1.4.0",
+          "序列化深层嵌套对象（层级≥1000）时，抛出 'Maximum call stack size exceeded' 错误",
+          "核心序列化函数无 depthLimit 配置项",
+          "应用无响应、进程退出",
+          "修复版本中出现 depthLimit 参数及深度计数器逻辑",
+          "重点关注 ResourceExhaustion.StackOverflow 漏洞类型"
+        ],
+        "related_exploit": [
+          "DoS.SerializationUnboundedDepth",
+          "ResourceExhaustion.RecursionStackOverflow",
+          "LogicFlaw.MissingDepthLimit",
+          "PerformanceHazard.NestedDataProcessing"
+        ]
+      },
+      {
+        "name": "SignalKUncontrolledMemoryConsumption",
+        "language": "TypeScript",
+        "category": "ResourceManagementFlaw",
+        "pattern": "SignalK Server <2.19.0 版本存在无限制内存消耗漏洞。服务器对无需认证的公共端点 `/signalk/v1/access/requests` 使用无界 JavaScript 对象存储所有请求数据，未设置存储数量/大小上限；未配置请求速率限制和请求体大小限制；清理旧请求的 `pruneRequests` 函数默认每15分钟执行一次，且仅清理超过24小时的请求，清理效率远低于攻击者发送请求的速度。攻击者可通过发送大量含大体积 payload 的 POST 请求，持续将数据写入内存，耗尽 Node.js 堆内存，导致服务器进程崩溃，引发拒绝服务。",
+        "vulnerability_id": "GHSA-7rqc-ff8m-7j23",
+        "package": "signalk-server",
+        "affected_versions": "<2.19.0",
+        "vuln_type": [
+          "Denial of Service",
+          "Memory Exhaustion",
+          "Resource Exhaustion",
+          "CWE-400",
+          "CWE-770"
+        ],
+        "cve": "CVE-2025-68272",
+        "ghsa": "GHSA-7rqc-ff8m-7j23",
+        "symptoms": [
+          "无需认证即可访问 /signalk/v1/access/requests 端点",
+          "使用简单 JS 对象存储所有请求数据，无数量/大小上限",
+          "pruneRequests 清理函数默认15分钟执行一次，效率极低",
+          "未配置请求速率限制和请求体大小限制",
+          "攻击触发后，服务器会出现 Node.js 堆内存持续增长，最终触发 'FATAL ERROR: Ineffective mark-compacts near heap limit Allocation failed' 错误",
+          "进程崩溃后，SignalK Server 完全不可用，需手动重启才能恢复",
+          "重点关注 CWE-400（不受控资源消耗）、CWE-770（无限制资源分配）漏洞类型"
+        ],
+        "related_exploit": [
+          "ResourceConsumption.UnboundedMemoryStorage",
+          "DoS.JavaScriptHeapOutOfMemory",
+          "AccessControl.NoRateLimitingForPublicEndpoint",
+          "CleanupMechanism.InefficientPruneInterval"
+        ]
+      },
+      {
+        "name": "QSArrayLimitBypassDoS",
+        "language": "TypeScript",
+        "category": "ResourceManagementFlaw",
+        "pattern": "qs 库 <6.14.1 版本存在 arrayLimit 绕过导致的内存耗尽漏洞。qs 设计 `arrayLimit` 选项（默认值20）用于限制解析后数组的最大长度，防止内存溢出。该限制仅对索引表示法（如 `a[0]=x`）的数组生效，处理括号表示法（如 `a[]=x`）的数组时，代码未使用已计算的 `currentArrayLength` 验证是否超过 `arrayLimit`，直接无限制合并数组元素。攻击者可构造包含大量括号表示法数组参数的 HTTP 请求（如重复 `a[]=x` 10万次），使 qs 解析出超大数组，耗尽服务器内存，触发 Node.js 堆内存溢出错误，导致进程崩溃，实现拒绝服务。",
+        "vulnerability_id": "GHSA-6rw7-vpxm-498p",
+        "package": "qs",
+        "affected_versions": "<6.14.1",
+        "vuln_type": [
+          "Denial of Service",
+          "Memory Exhaustion",
+          "Resource Exhaustion",
+          "Input Validation Flaw",
+          "CWE-400",
+          "CWE-20"
+        ],
+        "cve": "CVE-2025-15284",
+        "ghsa": "GHSA-6rw7-vpxm-498p",
+        "symptoms": [
+          "qs 库版本 < 6.14.1，使用默认或自定义 arrayLimit 限制数组长度",
+          "处理括号表示法（a[]=x）的数组参数时，未检查 currentArrayLength 是否超过 arrayLimit",
+          "已计算 currentArrayLength 但未在括号表示法处理逻辑中使用",
+          "攻击者发送含大量 a[]=x 的请求后，服务器 Node.js 进程内存占用快速增长",
+          "最终触发 'FATAL ERROR: Ineffective mark-compacts near heap limit Allocation failed' 错误，进程崩溃",
+          "攻击无需认证，仅需发送 HTTP 请求，门槛极低，单个恶意请求即可引发 DoS",
+          "重点关注 CWE-20（不当输入验证）漏洞类型"
+        ],
+        "related_exploit": [
+          "InputValidationError.ArrayLimitBypass",
+          "DoS.UnboundedArrayGrowth",
+          "SecurityOption.IneffectiveLimitEnforcement",
+          "ResourceConsumption.JavaScriptHeapOutOfMemory"
+        ]
+      },
+      {
+        "name": "ValibotReDoS",
+        "language": "TypeScript",
+        "category": "ResourceManagementFlaw",
+        "pattern": "valibot 库 >=0.31.0 且 <1.2.0 版本存在正则表达式拒绝服务（ReDoS）漏洞。emoji 验证功能使用的 `EMOJI_REGEX` 正则表达式中，`\\p{Emoji_Presentation}` 与国旗区域指示符号 `[\\u{1F1E6}-\\u{1F1FF}]`、`\\p{Emoji_Modifier_Base}` 等字符类存在重叠，导致正则引擎解析时产生歧义。当输入“几乎匹配但最终失败”的字符串（如重复 49 次国旗符号后拼接非匹配字符 `0`）时，引擎会探索指数级数量的匹配路径，匹配时间随输入长度呈指数增长。长度不足 100 字符的恶意输入即可使正则引擎陷入长时间计算（作者机器上约 2 分钟），CPU 占用率飙升，阻塞 Node.js 事件循环，造成拒绝服务。",
+        "vulnerability_id": "GHSA-vqpr-j7v3-hqw9",
+        "package": "valibot",
+        "affected_versions": ">=0.31.0 <1.2.0",
+        "vuln_type": [
+          "Denial of Service",
+          "ReDoS",
+          "Resource Exhaustion",
+          "CWE-1333",
+          "CWE-400"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-vqpr-j7v3-hqw9",
+        "symptoms": [
+          "使用 valibot 的 v.emoji() 进行字符串验证",
+          "依赖 EMOJI_REGEX 正则表达式实现 emoji 匹配逻辑",
+          "处理用户输入时出现 CPU 占用过高、响应超时",
+          "短输入（<100字符）即可触发长时间正则匹配",
+          "valibot 版本处于 >=0.31.0 且 <1.2.0 区间",
+          "存在输入长度限制（如 maxLength(100)）但仍触发响应超时",
+          "恶意输入格式为重复国旗区域指示符号（如 \\u{1F1E6}）后拼接非匹配字符（如 0）"
+        ],
+        "related_exploit": [
+          "RegexVulnerability.CatastrophicBacktracking",
+          "DoS.RegexDenialOfService",
+          "InputValidation.UnsafeRegexUsage"
+        ]
+      },
+      {
+        "name": "HPKEConcurrencyNonceReuse",
+        "language": "TypeScript",
+        "category": "LogicFlaw",
+        "pattern": "@hpke/core ≤1.7.4 版本的 `SenderContext.Seal()` API 存在并发竞态条件漏洞。`SenderContext` 内部使用私有序列号 `_seq` 生成 AEAD nonce，但该序列号未做并发安全保护。当多个 `Seal()` 调用并发执行时，会同时读取到相同的 `_seq` 值，生成完全相同的 AEAD nonce，之后才执行递增操作。AEAD 算法要求 nonce 必须全局唯一，nonce 重复直接导致加密的机密性和完整性完全丧失。攻击者可利用此漏洞破解加密消息或篡改密文。修复版本（1.7.5）中对序列号的读写增加了并发锁/原子操作，保证每次 `Seal()` 调用使用唯一的序列号。",
+        "vulnerability_id": "GHSA-73g8-5h73-26h4",
+        "package": "@hpke/core",
+        "affected_versions": "≤1.7.4",
+        "vuln_type": [
+          "Concurrency Race Condition",
+          "Cryptographic Flaw",
+          "Nonce Reuse",
+          "Logic Flaw",
+          "CWE-362"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-73g8-5h73-26h4",
+        "symptoms": [
+          "SenderContext 用于执行 HPKE 协议的发送方加密操作",
+          "Seal() 调用依赖序列号生成 AEAD nonce，且序列号未做并发安全保护",
+          "并发调用 Seal() 会生成相同的 nonce，导致解密异常或加密内容可被破解",
+          "AEAD 算法要求 nonce 全局唯一，nonce 复用会丢失消息机密性和完整性",
+          "重置接收方序列号后可解密原本失败的消息，证明 nonce 存在重复生成的情况",
+          "重点关注 ConcurrencyRaceCondition 漏洞类型"
+        ],
+        "related_exploit": [
+          "CryptoLogicFlaw.NonceReuseInAEAD",
+          "ConcurrencyFlaw.RaceConditionInSequenceNumber",
+          "SecurityLogicFlaw.ImproperNonceGeneration",
+          "CryptoFlaw.AEADConfidentialityLoss"
         ]
       }
     ],
