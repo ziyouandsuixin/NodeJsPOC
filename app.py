@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 @app.route('/')
 def index():
     """显示单页面应用"""
-    return render_template('single_page.html')
+    return render_template('nodejs_pro.html')
 
 @app.route('/knowledge_base')
 def knowledge_base():

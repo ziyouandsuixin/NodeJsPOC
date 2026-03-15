@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>API Test</title>
+</head>
+<body>
+    <button onclick="testAPI()">测试 API</button>
+    <div id="result"></div>
+
+    <script>
+    async function testAPI() {
+        try {
+            // 使用完整 URL
+            const response = await fetch('http://127.0.0.1:5000/api/status');
+            const data = await response.json();
+            document.getElementById('result').innerHTML = 
+                '✅ 连接成功: ' + JSON.stringify(data);
+        } catch (error) {
+            document.getElementById('result').innerHTML = 
+                '❌ 连接失败: ' + error;
+        }
+    }
+    </script>
+</body>
+</html>

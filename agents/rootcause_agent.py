@@ -177,7 +177,29 @@ Node.js源码：
         elif isinstance(keyword_data, list):
             # 特殊情况：LLM直接返回了列表
             keywords = keyword_data
-            summar = " ".join(keyword_data) if keyword_data else ""
+            
+            # 安全地将列表转换为摘要字符串
+            if keyword_data:
+                # 将所有元素转换为字符串（兼容字典和字符串）
+                string_items = []
+                for item in keyword_data:
+                    if isinstance(item, dict):
+                        # 如果是字典，尝试获取常用字段
+                        if 'name' in item:
+                            string_items.append(item['name'])
+                        elif 'value' in item:
+                            string_items.append(item['value'])
+                        else:
+                            # 如果没有常用字段，将整个字典转为字符串
+                            string_items.append(str(item))
+                    else:
+                        # 如果是其他类型（包括字符串），直接转为字符串
+                        string_items.append(str(item))
+                
+                summar = " ".join(string_items)
+            else:
+                summar = ""
+            
             logger.info(f"[RootCause] 检测到列表格式，已转换为摘要: {summar[:100]}...")
         else:
             # 其他情况
@@ -200,10 +222,26 @@ Node.js源码：
         
         # 构建更精确的query
         if package_name:
-            keywords_str = " ".join(keywords) if keywords else ""
+            # 安全地将 keywords 转换为字符串
+            if keywords:
+                if isinstance(keywords, list):
+                    # 将所有元素转为字符串
+                    keywords_str = " ".join([str(k) for k in keywords])
+                else:
+                    keywords_str = str(keywords)
+            else:
+                keywords_str = ""
+            
             query = f"{package_name} {summar} 漏洞特征: {keywords_str}"
         else:
-            keywordsquery = " ".join(keywords) if keywords else ""
+            if keywords:
+                if isinstance(keywords, list):
+                    keywordsquery = " ".join([str(k) for k in keywords])
+                else:
+                    keywordsquery = str(keywords)
+            else:
+                keywordsquery = ""
+            
             if keywordsquery:
                 keywordsquery = "重点关注，优先匹配以下关键词：" + keywordsquery 
             query = f"{summar} {keywordsquery}".strip() if summar else keywordsquery or node_text
