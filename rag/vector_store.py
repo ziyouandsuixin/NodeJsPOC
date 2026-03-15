@@ -374,10 +374,12 @@ def enhanced_rag_query(
     2. 精确匹配（关键词匹配）- 补充匹配
     3. BM25 检索（关键词统计）- 最后兜底
     
-    这样的顺序既能保证准确性，又能保证召回率
+    包含详细的性能监控，每个步骤的耗时都会被记录
     """
     import time
     start_time = time.time()
+    step_times = {}
+    step_hits = {}
     
     # 空retriever测试用
     if retriever is None:
@@ -391,9 +393,11 @@ def enhanced_rag_query(
     if not all_docs or (len(all_docs) == 1 and "empty" in str(all_docs[0].metadata.get("name", ""))):
         logger.info("知识库为空，跳过精确匹配")
         try:
+            step_start = time.time()
             docs = vectorstore.similarity_search(query, k=max_docs)
+            step_times['vector_only'] = time.time() - step_start
             elapsed = time.time() - start_time
-            logger.info(f"⏱️ 检索耗时: {elapsed:.2f}秒, 命中: {len(docs)}条")
+            logger.info(f"⏱️ 性能监控: 向量检索={step_times['vector_only']:.2f}秒, 总计={elapsed:.2f}秒, 命中={len(docs)}条")
             return docs
         except:
             return []
@@ -403,26 +407,37 @@ def enhanced_rag_query(
     final_matches = []
 
     # ---------- Step0: 按包名精确匹配（最快，最准）----------
+    step_start = time.time()
+    package_matches = 0
     if package_name:
         logger.info(f"🔍 Step0: 按包名精确匹配: {package_name}")
-        package_matches = []
         for doc in all_docs:
             if doc.metadata.get("package") == package_name:
                 key = doc.metadata.get("name") or doc.page_content[:30]
                 if key not in seen:
-                    package_matches.append(doc)
+                    final_matches.append(doc)
                     seen.add(key)
+                    package_matches += 1
         
-        if package_matches:
-            logger.info(f"   ✅ 包名匹配到 {len(package_matches)} 个文档")
-            final_matches.extend(package_matches)
+        step_times['step0_package'] = time.time() - step_start
+        step_hits['step0_package'] = package_matches
+        
+        if package_matches > 0:
+            logger.info(f"   ✅ 包名匹配到 {package_matches} 个文档")
             if len(final_matches) >= max_docs:
                 elapsed = time.time() - start_time
-                logger.info(f"⏱️ 检索耗时: {elapsed:.2f}秒, 命中: {len(final_matches)}条")
+                _log_performance(elapsed, step_times, step_hits, len(final_matches))
                 return final_matches[:max_docs]
+    else:
+        step_times['step0_package'] = time.time() - step_start
+        step_hits['step0_package'] = 0
 
     # ---------- Step1: 向量检索（语义相似度，主要手段）----------
+    step_start = time.time()
     logger.info(f"🔍 Step1: 向量检索 (语义相似度)")
+    vector_hits_before = len(final_matches)
+    api_calls = 0
+    
     try:
         # 如果有包名但没匹配到，可能是新包，用向量检索
         # 如果有类别路径，可以优化检索范围
@@ -438,27 +453,45 @@ def enhanced_rag_query(
                 # 在过滤后的文档中向量检索
                 temp_vectorstore = FAISS.from_documents(filtered_docs, vectorstore.embeddings)
                 vector_docs = temp_vectorstore.similarity_search(query, k=max_docs)
+                api_calls += 1
             else:
                 vector_docs = vectorstore.similarity_search(query, k=max_docs)
+                api_calls += 1
         else:
             vector_docs = vectorstore.similarity_search(query, k=max_docs)
+            api_calls += 1
         
+        vector_added = 0
         for doc in vector_docs:
             key = doc.metadata.get("name") or doc.page_content[:30]
             if key not in seen:
                 final_matches.append(doc)
                 seen.add(key)
+                vector_added += 1
                 if len(final_matches) >= max_docs:
-                    elapsed = time.time() - start_time
-                    logger.info(f"⏱️ 检索耗时: {elapsed:.2f}秒, 命中: {len(final_matches)}条")
-                    return final_matches[:max_docs]
+                    break
         
-        logger.info(f"   ✅ 向量检索命中 {len(vector_docs)} 个文档，新增 {len(final_matches) - len(package_matches) if package_matches else len(final_matches)} 个")
+        step_times['step1_vector'] = time.time() - step_start
+        step_hits['step1_vector'] = vector_added
+        step_hits['step1_api_calls'] = api_calls
+        
+        logger.info(f"   ✅ 向量检索新增 {vector_added} 个文档")
+        
+        if len(final_matches) >= max_docs:
+            elapsed = time.time() - start_time
+            _log_performance(elapsed, step_times, step_hits, len(final_matches))
+            return final_matches[:max_docs]
+            
     except Exception as e:
+        step_times['step1_vector'] = time.time() - step_start
+        step_hits['step1_vector'] = 0
         logger.warning(f"向量检索失败: {e}")
 
     # ---------- Step2: 精确匹配（关键词匹配，补充）----------
+    step_start = time.time()
     logger.info(f"🔍 Step2: 精确匹配 (关键词)")
+    exact_added = 0
+    
     for kw in keywords:
         kw_lower = kw.lower()
 
@@ -470,10 +503,13 @@ def enhanced_rag_query(
                 if key not in seen:
                     final_matches.append(doc)
                     seen.add(key)
+                    exact_added += 1
                     if len(final_matches) >= max_docs:
-                        elapsed = time.time() - start_time
-                        logger.info(f"⏱️ 检索耗时: {elapsed:.2f}秒, 命中: {len(final_matches)}条")
-                        return final_matches[:max_docs]
+                        break
+            if len(final_matches) >= max_docs:
+                break
+        if len(final_matches) >= max_docs:
+            break
 
         # 2.2 "Category.Name" 格式
         if "." in kw:
@@ -487,10 +523,11 @@ def enhanced_rag_query(
                         if key not in seen:
                             final_matches.append(doc)
                             seen.add(key)
+                            exact_added += 1
                             if len(final_matches) >= max_docs:
-                                elapsed = time.time() - start_time
-                                logger.info(f"⏱️ 检索耗时: {elapsed:.2f}秒, 命中: {len(final_matches)}条")
-                                return final_matches[:max_docs]
+                                break
+                if len(final_matches) >= max_docs:
+                    break
         else:
             # 2.3 完整匹配 name
             for doc in all_docs:
@@ -498,14 +535,29 @@ def enhanced_rag_query(
                     if doc.metadata.get("name") not in seen:
                         final_matches.append(doc)
                         seen.add(doc.metadata.get("name"))
+                        exact_added += 1
                         if len(final_matches) >= max_docs:
-                            elapsed = time.time() - start_time
-                            logger.info(f"⏱️ 检索耗时: {elapsed:.2f}秒, 命中: {len(final_matches)}条")
-                            return final_matches[:max_docs]
+                            break
+            if len(final_matches) >= max_docs:
+                break
+
+    step_times['step2_exact'] = time.time() - step_start
+    step_hits['step2_exact'] = exact_added
+    
+    if exact_added > 0:
+        logger.info(f"   ✅ 精确匹配新增 {exact_added} 个文档")
+    
+    if len(final_matches) >= max_docs:
+        elapsed = time.time() - start_time
+        _log_performance(elapsed, step_times, step_hits, len(final_matches))
+        return final_matches[:max_docs]
 
     # ---------- Step3: BM25 检索（关键词统计，最后兜底）----------
+    step_start = time.time()
+    logger.info(f"🔍 Step3: BM25 检索 (兜底)")
+    bm25_added = 0
+    
     if len(final_matches) < max_docs:
-        logger.info(f"🔍 Step3: BM25 检索 (兜底)")
         try:
             bm25_retriever = BM25Retriever.from_documents(all_docs)
             bm25_docs = bm25_retriever.invoke(" ".join(keywords))
@@ -514,13 +566,54 @@ def enhanced_rag_query(
                 if key not in seen:
                     final_matches.append(d)
                     seen.add(key)
+                    bm25_added += 1
                 if len(final_matches) >= max_docs:
                     break
         except Exception as e:
             logger.warning(f"BM25检索失败: {e}")
+    
+    step_times['step3_bm25'] = time.time() - step_start
+    step_hits['step3_bm25'] = bm25_added
+    
+    if bm25_added > 0:
+        logger.info(f"   ✅ BM25检索新增 {bm25_added} 个文档")
 
     elapsed = time.time() - start_time
-    logger.info(f"⏱️ 检索耗时: {elapsed:.2f}秒, 命中: {len(final_matches)}条")
+    _log_performance(elapsed, step_times, step_hits, len(final_matches))
+    
     logger.info(f"[RAG] query='{query[:100]}...' 最终命中文档数={len(final_matches)}")
     
     return final_matches
+
+
+def _log_performance(elapsed: float, step_times: dict, step_hits: dict, total_hits: int):
+    """记录详细的性能监控日志"""
+    
+    # 构建性能日志
+    perf_lines = ["⏱️ 性能监控:"]
+    
+    # Step0
+    if 'step0_package' in step_times:
+        hits = step_hits.get('step0_package', 0)
+        perf_lines.append(f"   ├─ Step0 包名匹配: {step_times['step0_package']:.2f}秒, 命中 {hits} 条")
+    
+    # Step1
+    if 'step1_vector' in step_times:
+        hits = step_hits.get('step1_vector', 0)
+        api_calls = step_hits.get('step1_api_calls', 0)
+        perf_lines.append(f"   ├─ Step1 向量检索: {step_times['step1_vector']:.2f}秒, 命中 {hits} 条 (API调用: {api_calls}次)")
+    
+    # Step2
+    if 'step2_exact' in step_times:
+        hits = step_hits.get('step2_exact', 0)
+        perf_lines.append(f"   ├─ Step2 精确匹配: {step_times['step2_exact']:.2f}秒, 命中 {hits} 条")
+    
+    # Step3
+    if 'step3_bm25' in step_times:
+        hits = step_hits.get('step3_bm25', 0)
+        perf_lines.append(f"   ├─ Step3 BM25: {step_times['step3_bm25']:.2f}秒, 命中 {hits} 条")
+    
+    # 总计
+    perf_lines.append(f"   └─ 总计: {elapsed:.2f}秒, 最终命中 {total_hits} 条")
+    
+    logger.info("\n".join(perf_lines))
