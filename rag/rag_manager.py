@@ -42,21 +42,24 @@ class RAGManager:
         print(f"📖 正在读取 rootcause: {KNOWLEDGE_BASE_PATHS['rootcause']}")
         print(f"📖 正在读取 exploit: {KNOWLEDGE_BASE_PATHS['exploit']}")
         
+        # 从 5 增加到 8，提高召回率
+        top_k = 8
+        
         self._retriever_NodeJs = build_vectorstore(
             KNOWLEDGE_BASE_PATHS["NodeJs"],
-            top_k=5,
+            top_k=top_k,
             doc_type="NodeJs",
             force_rebuild=force_rebuild
         )
         self._retriever_rootcause = build_vectorstore(
             KNOWLEDGE_BASE_PATHS["rootcause"],
-            top_k=5,
+            top_k=top_k,
             doc_type="rootcause",
             force_rebuild=force_rebuild
         )
         self._retriever_exploit = build_vectorstore(
             KNOWLEDGE_BASE_PATHS["exploit"],
-            top_k=5,
+            top_k=top_k,
             doc_type="exploit",
             force_rebuild=force_rebuild
         )
@@ -67,7 +70,7 @@ class RAGManager:
         # 构建层次结构字符串
         self._build_hierarchy_str()
         
-        print("✅ RAGManager: 已完成刷新。")
+        print(f"✅ RAGManager: 已完成刷新 (top_k={top_k})")
     
     def _build_package_category_index(self):
         """从根因知识库构建包名到类别路径的映射"""

@@ -368,13 +368,17 @@ def enhanced_rag_query(
     package_name: Optional[str] = None
 ) -> List[Document]:
     """
-    改造后的 RAG 查询：
-    0. 按包名精确匹配（如果有）
-    1. 按类别路径过滤（如果有）
-    2. 精确匹配优先（支持 "类别.名称" 格式）
-    3. BM25 检索补充
-    4. 向量检索兜底
+    优化后的 RAG 查询：
+    0. 按包名精确匹配（最快，最准）- 如果有包名，优先匹配
+    1. 向量检索（语义相似度）- 主要检索手段
+    2. 精确匹配（关键词匹配）- 补充匹配
+    3. BM25 检索（关键词统计）- 最后兜底
+    
+    这样的顺序既能保证准确性，又能保证召回率
     """
+    import time
+    start_time = time.time()
+    
     # 空retriever测试用
     if retriever is None:
         logger.warning(f"Retriever 为 None，返回空列表")
@@ -387,17 +391,21 @@ def enhanced_rag_query(
     if not all_docs or (len(all_docs) == 1 and "empty" in str(all_docs[0].metadata.get("name", ""))):
         logger.info("知识库为空，跳过精确匹配")
         try:
-            return vectorstore.similarity_search(query, k=max_docs)
+            docs = vectorstore.similarity_search(query, k=max_docs)
+            elapsed = time.time() - start_time
+            logger.info(f"⏱️ 检索耗时: {elapsed:.2f}秒, 命中: {len(docs)}条")
+            return docs
         except:
             return []
     
-    exact_matches = []
+    # 用于去重
     seen = set()
+    final_matches = []
 
-    # ---------- Step0: 按包名精确匹配 ----------
-    package_matches = []
+    # ---------- Step0: 按包名精确匹配（最快，最准）----------
     if package_name:
-        logger.info(f"🔍 按包名精确匹配: {package_name}")
+        logger.info(f"🔍 Step0: 按包名精确匹配: {package_name}")
+        package_matches = []
         for doc in all_docs:
             if doc.metadata.get("package") == package_name:
                 key = doc.metadata.get("name") or doc.page_content[:30]
@@ -407,103 +415,112 @@ def enhanced_rag_query(
         
         if package_matches:
             logger.info(f"   ✅ 包名匹配到 {len(package_matches)} 个文档")
-            exact_matches.extend(package_matches)
-            if len(exact_matches) >= max_docs:
-                return exact_matches[:max_docs]
+            final_matches.extend(package_matches)
+            if len(final_matches) >= max_docs:
+                elapsed = time.time() - start_time
+                logger.info(f"⏱️ 检索耗时: {elapsed:.2f}秒, 命中: {len(final_matches)}条")
+                return final_matches[:max_docs]
 
-    # ---------- Step1: 按类别路径过滤 ----------
-    filtered_docs = []
-    if category_path and not package_matches:  # 如果已经有包名匹配，不需要再过滤
-        logger.info(f"📂 使用类别路径过滤: {category_path}")
-        for doc in all_docs:
-            doc_path = doc.metadata.get("path", "")
-            # 检查文档路径是否以指定类别路径开头
-            if doc_path and doc_path.startswith(category_path):
-                filtered_docs.append(doc)
-        
-        # 如果过滤后没有文档，回退到全部文档
-        if not filtered_docs:
-            logger.warning(f"   ⚠️ 类别路径 '{category_path}' 下没有找到文档，回退到全部文档")
-            filtered_docs = all_docs
+    # ---------- Step1: 向量检索（语义相似度，主要手段）----------
+    logger.info(f"🔍 Step1: 向量检索 (语义相似度)")
+    try:
+        # 如果有包名但没匹配到，可能是新包，用向量检索
+        # 如果有类别路径，可以优化检索范围
+        if category_path:
+            # 先按类别路径过滤，再向量检索
+            filtered_docs = []
+            for doc in all_docs:
+                doc_path = doc.metadata.get("path", "")
+                if doc_path and doc_path.startswith(category_path):
+                    filtered_docs.append(doc)
+            
+            if filtered_docs:
+                # 在过滤后的文档中向量检索
+                temp_vectorstore = FAISS.from_documents(filtered_docs, vectorstore.embeddings)
+                vector_docs = temp_vectorstore.similarity_search(query, k=max_docs)
+            else:
+                vector_docs = vectorstore.similarity_search(query, k=max_docs)
         else:
-            logger.info(f"   📊 类别过滤后文档数: {len(filtered_docs)}/{len(all_docs)}")
-    else:
-        filtered_docs = all_docs
+            vector_docs = vectorstore.similarity_search(query, k=max_docs)
+        
+        for doc in vector_docs:
+            key = doc.metadata.get("name") or doc.page_content[:30]
+            if key not in seen:
+                final_matches.append(doc)
+                seen.add(key)
+                if len(final_matches) >= max_docs:
+                    elapsed = time.time() - start_time
+                    logger.info(f"⏱️ 检索耗时: {elapsed:.2f}秒, 命中: {len(final_matches)}条")
+                    return final_matches[:max_docs]
+        
+        logger.info(f"   ✅ 向量检索命中 {len(vector_docs)} 个文档，新增 {len(final_matches) - len(package_matches) if package_matches else len(final_matches)} 个")
+    except Exception as e:
+        logger.warning(f"向量检索失败: {e}")
 
-    # ---------- Step2: 精确匹配 ----------
+    # ---------- Step2: 精确匹配（关键词匹配，补充）----------
+    logger.info(f"🔍 Step2: 精确匹配 (关键词)")
     for kw in keywords:
         kw_lower = kw.lower()
 
         # 2.1 匹配 vuln_type 字段
-        for doc in filtered_docs:
+        for doc in all_docs:
             vuln_type_str = doc.metadata.get("vuln_type", "")
             if vuln_type_str and kw_lower in vuln_type_str.lower():
                 key = doc.metadata.get("name") or doc.page_content[:30]
                 if key not in seen:
-                    exact_matches.append(doc)
+                    final_matches.append(doc)
                     seen.add(key)
-                    if len(exact_matches) >= max_docs:
-                        return exact_matches[:max_docs]
+                    if len(final_matches) >= max_docs:
+                        elapsed = time.time() - start_time
+                        logger.info(f"⏱️ 检索耗时: {elapsed:.2f}秒, 命中: {len(final_matches)}条")
+                        return final_matches[:max_docs]
 
         # 2.2 "Category.Name" 格式
         if "." in kw:
             parts = kw.split(".")
             if len(parts) == 2:
                 category, item_name = parts[0].lower(), parts[1].lower()
-                for doc in filtered_docs:
+                for doc in all_docs:
                     if (doc.metadata.get("category", "").lower() == category and
                         doc.metadata.get("name", "").lower() == item_name):
                         key = f"{doc.metadata.get('category')}.{doc.metadata.get('name')}"
                         if key not in seen:
-                            exact_matches.append(doc)
+                            final_matches.append(doc)
                             seen.add(key)
-                            if len(exact_matches) >= max_docs:
-                                return exact_matches[:max_docs]
+                            if len(final_matches) >= max_docs:
+                                elapsed = time.time() - start_time
+                                logger.info(f"⏱️ 检索耗时: {elapsed:.2f}秒, 命中: {len(final_matches)}条")
+                                return final_matches[:max_docs]
         else:
             # 2.3 完整匹配 name
-            for doc in filtered_docs:
+            for doc in all_docs:
                 if doc.metadata.get("name", "").lower() == kw_lower:
                     if doc.metadata.get("name") not in seen:
-                        exact_matches.append(doc)
+                        final_matches.append(doc)
                         seen.add(doc.metadata.get("name"))
-                        if len(exact_matches) >= max_docs:
-                            return exact_matches[:max_docs]
+                        if len(final_matches) >= max_docs:
+                            elapsed = time.time() - start_time
+                            logger.info(f"⏱️ 检索耗时: {elapsed:.2f}秒, 命中: {len(final_matches)}条")
+                            return final_matches[:max_docs]
 
-    # ---------- Step3: BM25 检索 ----------
-    if len(exact_matches) < max_docs:
+    # ---------- Step3: BM25 检索（关键词统计，最后兜底）----------
+    if len(final_matches) < max_docs:
+        logger.info(f"🔍 Step3: BM25 检索 (兜底)")
         try:
-            bm25_retriever = BM25Retriever.from_documents(filtered_docs)
+            bm25_retriever = BM25Retriever.from_documents(all_docs)
             bm25_docs = bm25_retriever.invoke(" ".join(keywords))
             for d in bm25_docs:
                 key = d.metadata.get("name") or d.page_content[:30]
                 if key not in seen:
-                    exact_matches.append(d)
+                    final_matches.append(d)
                     seen.add(key)
-                if len(exact_matches) >= max_docs:
+                if len(final_matches) >= max_docs:
                     break
         except Exception as e:
             logger.warning(f"BM25检索失败: {e}")
 
-    # ---------- Step4: 向量检索兜底 ----------
-    if len(exact_matches) < max_docs:
-        try:
-            # 如果有类别路径，优先在过滤后的文档中向量检索
-            if filtered_docs and filtered_docs != all_docs:
-                # 临时创建一个只包含过滤后文档的检索器
-                temp_vectorstore = FAISS.from_documents(filtered_docs, vectorstore.embeddings)
-                vector_docs = temp_vectorstore.similarity_search(query, k=max_docs)
-            else:
-                vector_docs = vectorstore.similarity_search(query, k=max_docs)
-                
-            for d in vector_docs:
-                key = d.metadata.get("name") or d.page_content[:30]
-                if key not in seen:
-                    exact_matches.append(d)
-                    seen.add(key)
-                if len(exact_matches) >= max_docs:
-                    break
-        except Exception as e:
-            logger.warning(f"向量检索失败: {e}")
-
-    logger.info(f"[RAG] query='{query}' 命中文档数={len(exact_matches)}")
-    return exact_matches
+    elapsed = time.time() - start_time
+    logger.info(f"⏱️ 检索耗时: {elapsed:.2f}秒, 命中: {len(final_matches)}条")
+    logger.info(f"[RAG] query='{query[:100]}...' 最终命中文档数={len(final_matches)}")
+    
+    return final_matches
