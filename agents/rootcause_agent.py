@@ -1,9 +1,10 @@
-# agents/rootcause_agent.py
 import logging
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables import RunnablePassthrough
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
+import re
+import time
 
 from config import OPENAI_API_KEY, CHAT_MODEL
 from rag.vector_store import enhanced_rag_query
@@ -29,14 +30,17 @@ class RootCauseAgent:
 
 要求：
 1、关键词为英文，符合PascalCase命名法
+2、**必须包含Node.js分类信息中提到的具体包名**
+3、**必须包含具体的漏洞特征（如 const值未转义、value = item.const 等）**
+4、**优先使用分类信息中的 related_exploit 字段作为关键词**
 
 Node.js信息：
 {NodeJs_type}
 
 输出JSON:
 {{
-  "summary": "一句话总结Node_code潜在安全风险",
-  "rootcause_keywords": ["...", "...", "..."]
+  "summary": "一句话总结漏洞特征，**必须包含具体包名和漏洞模式**，例如：'@orval/mock 在解析OpenAPI schema的const字段时未转义导致命令注入'",
+  "rootcause_keywords": ["包名.漏洞特征", "漏洞类型.具体位置", "..."]
 }}
 """
         )
@@ -62,7 +66,7 @@ RootCause线索描述:
 
 请按以下JSON格式输出评估结果：
 {{
-  "vulnerability_name": "线索的漏洞名称"
+  "vulnerability_name": "线索的漏洞名称",
   "clue_description": "简要描述当前分析的线索内容",
   "exists": true/false,
   "confidence": "高/中/低",
@@ -80,7 +84,6 @@ RootCause线索描述:
             template="""
 你是一名首席Node.js审计专家。基于以下对各条漏洞线索的独立评估结果，请选择最可能真实存在的漏洞。
 
-评估要求：
 评估要求：
 1. 综合分析所有线索的评估结果，特别是标记为"exists": true的线索
 2. 优先选择证据充分、置信度高的漏洞
@@ -160,28 +163,57 @@ Node.js源码：
                 "confidence": "低"
             }
 
-    def find_rootcauses_and_audit(self, NodeJs_type: List[str], js_code: str) -> Dict:
+    def find_rootcauses_and_audit(self, NodeJs_type: List[str], js_code: str, package_name: Optional[str] = None) -> Dict:
         node_text = "\n".join(NodeJs_type)
         keyword_res = self.rootcause_keywords_chain.invoke({"NodeJs_type": node_text})
         keyword_res = keyword_res.content if hasattr(keyword_res, 'content') else keyword_res
         keyword_data = try_parse_json(keyword_res)
         keywords = keyword_data.get("rootcause_keywords", [])
         summar = keyword_data.get("summary", "")
-        logging.info(f"[RootCause] 关键词生成: {keywords}\n[RootCause] 摘要生成：{summar}")
+        logging.info(f"[RootCause] 关键词生成: {keywords}")
+        logging.info(f"[RootCause] 摘要生成：{summar}")
 
-        keywordsquery = " ".join(keywords) if keywords else ""
-        if keywordsquery:
-            keywordsquery = "重点关注，优先匹配以下关键词：" + keywordsquery 
-        query = f"{summar} {keywordsquery}".strip() if summar else keywordsquery or node_text
+        # 从NodeJs_type中提取包名（如果没传）
+        if not package_name:
+            for item in NodeJs_type:
+                # 匹配 @xxx/xxx 或 xxx/xxx 格式的包名
+                match = re.search(r'@?[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+', item)
+                if match:
+                    package_name = match.group(0)
+                    logger.info(f"[RootCause] 从NodeJs_type提取到包名: {package_name}")
+                    break
+        
+        # 构建更精确的query
+        if package_name:
+            keywords_str = " ".join(keywords) if keywords else ""
+            query = f"{package_name} {summar} 漏洞特征: {keywords_str}"
+        else:
+            keywordsquery = " ".join(keywords) if keywords else ""
+            if keywordsquery:
+                keywordsquery = "重点关注，优先匹配以下关键词：" + keywordsquery 
+            query = f"{summar} {keywordsquery}".strip() if summar else keywordsquery or node_text
 
         logging.info(f"[RootCause] 使用 query='{query}' 进行检索")
 
+        # 获取类别路径（如果有包名且retriever有相应方法）
+        category_path = None
+        if package_name and hasattr(self.retriever_rootcause, 'get_category_path_for_package'):
+            # 注意：这里需要从RAGManager获取，但retriever本身没有这个方法
+            # 实际调用时会在enhanced_rag_query中通过其他方式获取
+            pass
+
         # ---------- Step2: RootCause RAG ----------
-        docs = enhanced_rag_query(query, self.retriever_rootcause, keywords, max_docs=5)
+        docs = enhanced_rag_query(
+            query, 
+            self.retriever_rootcause, 
+            keywords, 
+            max_docs=5,
+            package_name=package_name  # 传递包名
+        )
         rootcause_entries = [doc.page_content for doc in docs]
         logging.info(f"[RootCause] 命中条目数: {len(rootcause_entries)}")
 
-        # ---------- 新增: Step3 独立评估每条线索 ----------
+        # ---------- Step3: 独立评估每条线索 ----------
         evaluation_results = []
         logger.info(f"[Evaluation] 开始独立评估 {len(rootcause_entries)} 条漏洞线索")
         
@@ -191,23 +223,25 @@ Node.js源码：
             evaluation_results.append(eval_result)
 
             # 添加短暂延迟避免速率限制
-            import time
             time.sleep(1)
 
         # 统计评估结果
         valid_clues = [r for r in evaluation_results if r.get('exists')]
         logger.info(f"[EvaluationSummary] 完成所有线索评估，有效线索: {len(valid_clues)}/{len(evaluation_results)}")
 
-        # ---------- 新增: Step4 基于评估结果进行最终选择 ----------
-            # 构建评估结果摘要
-        eval_summary = "\n\n".join([
-            f"线索{i+1} (置信度: {r['confidence']}):\n"
-            f"内容: {r['clue_content']}\n"
-            f"评估: {r['evaluation'].get('reasoning', '无详细推理')}\n"
-            f"存在性: {r['exists']}\n"
-            f"证据位置: {r['evaluation'].get('evidence_location', '未指定')}"
-            for i, r in enumerate(valid_clues)
-        ])
+        # ---------- Step4: 基于评估结果进行最终选择 ----------
+        # 构建评估结果摘要
+        if valid_clues:
+            eval_summary = "\n\n".join([
+                f"线索{i+1} (置信度: {r['confidence']}):\n"
+                f"内容: {r['clue_content'][:200]}...\n"
+                f"评估: {r['evaluation'].get('reasoning', '无详细推理')}\n"
+                f"存在性: {r['exists']}\n"
+                f"证据位置: {r['evaluation'].get('evidence_location', '未指定')}"
+                for i, r in enumerate(valid_clues)
+            ])
+        else:
+            eval_summary = "没有找到有效线索"
             
         final_res = self.final_chain.invoke({
             "js_code": js_code,

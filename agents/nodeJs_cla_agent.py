@@ -23,7 +23,7 @@ class NodeJsClassifierAgent:
         
         self.keyword_prompt = PromptTemplate(
             input_variables=["js_code", "hierarchy_str"],
-            template="""
+template="""
 你是一名Node.js生态漏洞挖掘与利用专家。请阅读以下js_code.json文件，总结出用于描述其安全风险的关键词。
 
 要求：
@@ -31,7 +31,8 @@ class NodeJsClassifierAgent:
 
 Node.js代码:
 {js_code}
-NodeJsTpye:
+
+Node.js类型层次结构:
 {hierarchy_str}
 
 输出格式:
@@ -39,7 +40,7 @@ NodeJsTpye:
   "summary": "...",
   "NodeJsType_keywords":["...","..."]
 }}
-            """
+"""
         )
         self.keyword_chain = self.keyword_prompt | self.llm
 

@@ -31,6 +31,7 @@ logging.basicConfig(
     filename=LOG_FILE,
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
+    encoding='utf-8'
 )
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,12 @@ class PackageFilteredRAGManager(RAGManager):
     def clear_package_context(self):
         """清除包名上下文"""
         self.package_context = None
+    
+    def get_category_path_for_current_package(self) -> str:
+        """获取当前包名的类别路径"""
+        if self.package_context:
+            return self.get_category_path_for_package(self.package_context)
+        return ""
     
     @property
     def retriever_NodeJs(self):
@@ -175,7 +182,8 @@ class AnalysisCoordinator:
         print("\n🔬 阶段2: 漏洞根因分析")
         rootcause_res = self.rootcause_agent.find_rootcauses_and_audit(
             NodeJs_type=retriever_NodeJs,
-            js_code=js_code
+            js_code=js_code,
+            package_name=self.current_package  # 新增：传递包名
         )
         
         final_vuln = rootcause_res.get("final_vulnerability", {})
@@ -310,7 +318,8 @@ class KnowledgeCoordinator:
         # 根因分析
         rootcause_res = self.rootcause_agent.find_rootcauses_and_audit(
             NodeJs_type=retriever_NodeJs,
-            js_code=js_code
+            js_code=js_code,
+            package_name=self.current_package  # 新增：传递包名
         )
         
         # 将包名注入到final_vulnerability
@@ -614,7 +623,6 @@ def build_tree_data(
             add_edge(complex_node, rc_node)
 
     # 攻击步骤连线 - 只处理当前漏洞的步骤
-    # 攻击步骤连线 - 只处理当前漏洞的步骤
     if vulnerablename and detailed_steps and vulnerablename in node_cache:
         target_node = node_cache[vulnerablename]
         prev_node = None
@@ -622,7 +630,7 @@ def build_tree_data(
             name_match = re.search(r"Name: (.+?)(?:\n|$)", step_info)
             impact_match = re.search(r"Impact: (.+?)(?:\n|$)", step_info)
             
-            # ========== 🔴 新增：按包名过滤攻击步骤 ==========
+            # ========== 新增：按包名过滤攻击步骤 ==========
             # 检查步骤是否属于当前包
             applicable_match = re.search(r"applicable_to: \[([^\]]+)\]", step_info)
             if applicable_match and current_package:
@@ -634,7 +642,7 @@ def build_tree_data(
                         pkg_without_at = current_package.replace('@', '')
                         if f'"{pkg_without_at}"' not in applicable_str and f"'{pkg_without_at}'" not in applicable_str:
                             continue
-            # ========== 🔴 新增结束 ==========
+            # ========== 新增结束 ==========
             
             if name_match and impact_match:
                 step_name = name_match.group(1).strip()

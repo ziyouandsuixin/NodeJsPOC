@@ -1,4 +1,3 @@
-# rag/rag_manager.py
 import json
 from rag.vector_store import build_vectorstore
 from utils.file_utils import load_nodejs_types_hierarchy  
@@ -16,6 +15,8 @@ class RAGManager:
             cls._instance._retriever_NodeJs = None
             cls._instance._retriever_rootcause = None  
             cls._instance._retriever_exploit = None
+            # 新增：包名到类别路径的映射
+            cls._instance.package_to_category = {}
             cls._instance.refresh_all()  # 初始化加载
         return cls._instance
 
@@ -56,7 +57,74 @@ class RAGManager:
             doc_type="exploit"
         )
         
+        # ===== 新增：构建包名到类别路径的映射 =====
+        self._build_package_category_index()
+        
+        # ===== 新增：构建层次结构字符串（现在真正赋值）=====
+        self._build_hierarchy_str()
+        
         print("✅ RAGManager: 已完成刷新。")
+    
+    # ===== 新增方法：构建包名索引 =====
+    def _build_package_category_index(self):
+        """从根因知识库构建包名到类别路径的映射"""
+        if not self._retriever_rootcause:
+            return
+        
+        vectorstore = self._retriever_rootcause.vectorstore
+        all_docs = list(vectorstore.docstore._dict.values())
+        
+        for doc in all_docs:
+            package = doc.metadata.get("package")
+            path = doc.metadata.get("path", "")
+            if package and path:
+                self.package_to_category[package] = path
+        
+        print(f"📊 构建了 {len(self.package_to_category)} 个包名到路径的映射")
+    
+    # ===== 新增方法：构建层次结构 =====
+    def _build_hierarchy_str(self):
+        """从NodeJs检索器构建层次结构字符串"""
+        if not self._retriever_NodeJs:
+            self.hierarchy_str = "无层次结构信息"
+            return
+        
+        try:
+            vectorstore = self._retriever_NodeJs.vectorstore
+            all_docs = list(vectorstore.docstore._dict.values())
+            
+            # 提取所有路径
+            paths = set()
+            for doc in all_docs:
+                path = doc.metadata.get("path", "")
+                if path:
+                    paths.add(path)
+            
+            # 格式化成易读的树
+            if paths:
+                # 按层级排序
+                sorted_paths = sorted(paths)
+                tree_lines = []
+                for path in sorted_paths:
+                    # 计算缩进（根据箭头数量）
+                    indent_level = path.count("->")
+                    indent = "  " * indent_level
+                    # 取最后一部分作为显示名
+                    display_name = path.split("->")[-1].strip()
+                    tree_lines.append(f"{indent}- {display_name} ({path})")
+                
+                self.hierarchy_str = "\n".join(tree_lines)
+                print(f"📊 层次结构构建完成，共 {len(paths)} 个节点")
+            else:
+                self.hierarchy_str = "无层次结构信息"
+        except Exception as e:
+            print(f"⚠️ 构建层次结构时出错: {e}")
+            self.hierarchy_str = "层次结构构建失败"
+    
+    # ===== 新增方法：获取包名的类别路径 =====
+    def get_category_path_for_package(self, package_name: str) -> str:
+        """根据包名获取类别路径"""
+        return self.package_to_category.get(package_name, "")
 
     def get_hierarchy(self):
         """获取当前层次结构"""
