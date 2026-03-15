@@ -2,7 +2,7 @@
 Node.js代码安全分析协调器
 负责协调多个Agent完成完整的代码安全分析流程
 """
-
+import glob
 import logging
 from openai import OpenAI
 from typing import Dict, List, Any
@@ -866,69 +866,16 @@ def analyze_js_from_content(content: str, filename: str) -> Dict:
     return result
 
 
-def debug_vectorstore():
-    """调试：查看向量库是否包含 @mcpjam/inspector 的文档"""
-    import os
-    from rag.rag_manager import RAGManager
-    from main import PackageFilteredRAGManager
-    from pathlib import Path
-    
-    print("\n🔍 调试：检查向量库状态")
-    
-    # 1. 检查向量库目录
-    vectorstore_path = Path("./vectorstore")
-    if vectorstore_path.exists():
-        print(f"   ✅ 向量库目录存在: {vectorstore_path.absolute()}")
-        for subdir in ['NodeJs', 'rootcause', 'exploit']:
-            sub_path = vectorstore_path / subdir
-            if sub_path.exists():
-                faiss_files = list(sub_path.glob("*.faiss"))
-                pkl_files = list(sub_path.glob("*.pkl"))
-                print(f"      - {subdir}: {len(faiss_files)} .faiss, {len(pkl_files)} .pkl")
-    else:
-        print(f"   ❌ 向量库目录不存在: {vectorstore_path.absolute()}")
-    
-    # 2. 尝试检索 @mcpjam/inspector
-    try:
-        rag = PackageFilteredRAGManager()
-        
-        if rag._retriever_rootcause:
-            print(f"   ✅ rootcause 检索器已初始化")
-            
-            if hasattr(rag._retriever_rootcause, 'vectorstore'):
-                docs = rag._retriever_rootcause.vectorstore.similarity_search(
-                    "@mcpjam/inspector 命令注入", 
-                    k=5
-                )
-                print(f"   📚 检索到 {len(docs)} 条 rootcause 文档")
-                for i, doc in enumerate(docs[:3]):
-                    content = doc.page_content
-                    preview = content.replace('\n', ' ')[:100]
-                    print(f"      [{i+1}] {preview}...")
-            else:
-                print(f"   ❌ 检索器没有 vectorstore 属性")
-        else:
-            print(f"   ❌ rootcause 检索器未初始化")
-            
-    except Exception as e:
-        print(f"   ❌ 调试出错: {e}")
-        import traceback
-        traceback.print_exc()
-
-
 if __name__ == "__main__":
     import sys
     import glob  # 添加glob导入
-    
-    # 调试向量库
-    debug_vectorstore()
     
     # 支持命令行参数
     if len(sys.argv) > 1:
         js_dir = sys.argv[1]
     else:
         # 默认路径
-        js_dir = "D:\\Projects\\25security\\NodeJsPOC\\js_examples\\orval"
+        js_dir = "D:\\Projects\\25security\\NodeJsPOC\\js_examples\\mcpjam_inspector"
     
     # 找出所有.js文件
     js_files = [f for f in os.listdir(js_dir) if f.endswith(".js") or f.endswith(".ts")]

@@ -168,8 +168,23 @@ Node.js源码：
         keyword_res = self.rootcause_keywords_chain.invoke({"NodeJs_type": node_text})
         keyword_res = keyword_res.content if hasattr(keyword_res, 'content') else keyword_res
         keyword_data = try_parse_json(keyword_res)
-        keywords = keyword_data.get("rootcause_keywords", [])
-        summar = keyword_data.get("summary", "")
+        
+        # 添加类型检查，处理LLM返回格式不一致的问题
+        if isinstance(keyword_data, dict):
+            # 正常情况：返回字典
+            keywords = keyword_data.get("rootcause_keywords", [])
+            summar = keyword_data.get("summary", "")
+        elif isinstance(keyword_data, list):
+            # 特殊情况：LLM直接返回了列表
+            keywords = keyword_data
+            summar = " ".join(keyword_data) if keyword_data else ""
+            logger.info(f"[RootCause] 检测到列表格式，已转换为摘要: {summar[:100]}...")
+        else:
+            # 其他情况
+            keywords = []
+            summar = str(keyword_data) if keyword_data else ""
+            logger.warning(f"[RootCause] 未知的返回格式: {type(keyword_data)}")
+        
         logging.info(f"[RootCause] 关键词生成: {keywords}")
         logging.info(f"[RootCause] 摘要生成：{summar}")
 
