@@ -2,7 +2,9 @@ import logging
 import json
 import glob
 import os
+import hashlib
 from typing import List, Dict, Any, Optional
+from pathlib import Path
 from langchain_core.documents import Document
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
@@ -53,8 +55,29 @@ def get_path_for_entry(entry: Dict, name_to_entry: Dict[str, Dict]) -> List[str]
             return parent_path + [name]
         else:
             # 如果父类别不存在，记录警告并视为根层级
-            logger.warning(f"Category '{category}' not found for entry '{name}'. Treating as root-level.")
+            logger.debug(f"Category '{category}' not found for entry '{name}'. Treating as root-level.")
             return ["NPM", name]  # 统一使用'NPM'
+
+def get_knowledge_version(knowledge_dir: str) -> str:
+    """计算知识库的版本（基于文件修改时间）"""
+    json_files = glob.glob(os.path.join(knowledge_dir, "*.json"))
+    if not json_files:
+        return "unknown"
+    
+    # 计算所有文件的最后修改时间的哈希
+    timestamps = []
+    for f in sorted(json_files):
+        try:
+            mtime = os.path.getmtime(f)
+            timestamps.append(str(mtime))
+        except Exception as e:
+            logger.warning(f"无法获取文件修改时间: {f}, {e}")
+    
+    if not timestamps:
+        return "unknown"
+    
+    version_str = "|".join(timestamps)
+    return hashlib.md5(version_str.encode()).hexdigest()[:8]
 
 # ============ loader: NodeJs ============
 def load_json_files_to_docs_NodeJs(dir_path: str) -> List[Document]:
@@ -167,8 +190,8 @@ def load_json_files_to_docs_Vulnerability(dir_path: str) -> List[Document]:
                     metadata={
                         "name": entry.get("name", ""),
                         "category": entry.get("category", ""),
-                        "package": entry.get("package", ""),  # 新增
-                        "vuln_type": vuln_type_str,  # 新增
+                        "package": entry.get("package", ""),
+                        "vuln_type": vuln_type_str,
                         "path": " -> ".join(path),
                         "type": "Vulnerability"
                     }
@@ -238,7 +261,7 @@ def load_json_files_to_docs_Exploit(dir_path: str) -> List[Document]:
                         "category": entry.get("category", ""),
                         "path": " -> ".join(path),
                         "type": "Exploit",
-                        "applicable_to": applicable_to  # 存在metadata中方便检索
+                        "applicable_to": applicable_to
                     }
                 )
                 docs.append(doc)
@@ -250,11 +273,53 @@ def load_json_files_to_docs_Exploit(dir_path: str) -> List[Document]:
     return docs
 
 # ============ 构建 Vectorstore ============
-def build_vectorstore(knowledge_dir: str, top_k: int = 5, doc_type: str = "NodeJs"):
+def build_vectorstore(knowledge_dir: str, top_k: int = 5, doc_type: str = "NodeJs", force_rebuild: bool = False):
     """
     构建对应目录的向量库
     :param doc_type: "NodeJs" | "rootcause" | "exploit"
+    :param force_rebuild: 是否强制重建（忽略缓存）
     """
+    # 缓存路径
+    cache_dir = Path("./vectorstore")
+    cache_dir.mkdir(exist_ok=True)
+    
+    # 版本文件路径
+    version_file = cache_dir / f"{doc_type}_version.txt"
+    cache_path = cache_dir / doc_type
+    
+    # 获取当前知识库版本
+    current_version = get_knowledge_version(knowledge_dir)
+    
+    # 检查版本是否匹配
+    version_match = False
+    if version_file.exists():
+        try:
+            with open(version_file, 'r', encoding='utf-8') as f:
+                cached_version = f.read().strip()
+                version_match = (cached_version == current_version)
+        except Exception as e:
+            logger.warning(f"读取版本文件失败: {e}")
+    
+    # 如果不强制重建、版本匹配且缓存存在，直接加载
+    if not force_rebuild and version_match and cache_path.exists():
+        logger.info(f"📦 加载缓存的 {doc_type} 向量库 (版本: {current_version})")
+        embeddings = OpenAIEmbeddings(
+            model=EMBED_MODEL,
+            openai_api_key=OPENAI_API_KEY,
+            openai_api_base="https://api.gpt.ge/v1/",
+            default_headers={"x-foo":"true"}
+        )
+        try:
+            vectorstore = FAISS.load_local(str(cache_path), embeddings)
+            logger.info(f"✅ 成功加载 {doc_type} 向量库")
+            return vectorstore.as_retriever(search_kwargs={"k": top_k})
+        except Exception as e:
+            logger.warning(f"加载缓存失败，将重建: {e}")
+            # 加载失败，继续重建
+    
+    # 否则重新构建
+    logger.info(f"🔨 重建 {doc_type} 向量库 (版本: {current_version})...")
+    
     # 根据doc_type调用对应的加载器
     if doc_type == "NodeJs":
         docs = load_json_files_to_docs_NodeJs(knowledge_dir)
@@ -278,6 +343,19 @@ def build_vectorstore(knowledge_dir: str, top_k: int = 5, doc_type: str = "NodeJ
     )
     
     vectorstore = FAISS.from_documents(docs, embeddings)
+    
+    # 保存到缓存
+    logger.info(f"💾 保存 {doc_type} 向量库到缓存: {cache_path}")
+    vectorstore.save_local(str(cache_path))
+    
+    # 保存版本信息
+    try:
+        with open(version_file, 'w', encoding='utf-8') as f:
+            f.write(current_version)
+        logger.info(f"📝 保存版本信息: {current_version}")
+    except Exception as e:
+        logger.warning(f"保存版本信息失败: {e}")
+    
     return vectorstore.as_retriever(search_kwargs={"k": top_k})
 
 # ============ RAG 检索 =============

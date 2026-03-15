@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 
 class PackageFilteredRAGManager(RAGManager):
-    """支持按包名过滤的RAG管理器 - 只在展示层过滤，不在检索层过滤"""
+    """支持按包名过滤的RAG管理器"""
     
     def __init__(self):
         super().__init__()
@@ -61,17 +61,17 @@ class PackageFilteredRAGManager(RAGManager):
     
     @property
     def retriever_NodeJs(self):
-        """返回Node.js检索器 - 不做包名过滤"""
+        """返回Node.js检索器"""
         return super().retriever_NodeJs
     
     @property
     def retriever_rootcause(self):
-        """返回根因检索器 - 不做包名过滤"""
+        """返回根因检索器"""
         return super().retriever_rootcause
     
     @property
     def retriever_exploit(self):
-        """返回利用步骤检索器 - 不做包名过滤"""
+        """返回利用步骤检索器"""
         return super().retriever_exploit
 
 
@@ -115,6 +115,46 @@ class AnalysisCoordinator:
         # 使用支持包过滤的RAG管理器
         self.rag = PackageFilteredRAGManager()
         
+        # ===== 向量库持久化逻辑 =====
+        cache_dir = Path("./vectorstore")
+        force_rebuild = False
+        
+        # 如果缓存不存在，需要重建
+        if not cache_dir.exists():
+            force_rebuild = True
+            print("📦 首次运行，构建向量库缓存...")
+        
+        # 可以通过环境变量强制重建
+        if os.environ.get("REBUILD_VECTORSTORE") == "1":
+            force_rebuild = True
+            print("🔄 环境变量 REBUILD_VECTORSTORE=1，强制重建向量库...")
+        
+        # 可以通过参数文件控制重建（比如知识库更新时）
+        version_file = cache_dir / "knowledge_version.txt"
+        current_version = self._get_knowledge_version()
+        
+        if version_file.exists():
+            try:
+                with open(version_file, 'r', encoding='utf-8') as f:
+                    cached_version = f.read().strip()
+                if cached_version != current_version:
+                    force_rebuild = True
+                    print(f"📝 知识库版本变更 ({cached_version} → {current_version})，重建向量库...")
+            except:
+                pass
+        
+        # 刷新时传入force_rebuild参数
+        self.rag.refresh_all(force_rebuild=force_rebuild)
+        
+        # 保存当前版本
+        if force_rebuild:
+            try:
+                with open(version_file, 'w', encoding='utf-8') as f:
+                    f.write(current_version)
+            except:
+                pass
+        # ===== 向量库持久化逻辑结束 =====
+        
         # 注意：retriever属性在set_package_context之后才真正生效
         self.retriever_NodeJs = self.rag.retriever_NodeJs
         self.retriever_rootcause = self.rag.retriever_rootcause
@@ -128,6 +168,27 @@ class AnalysisCoordinator:
         self.poc_validator = POCValidatorAgent()
         
         self.current_package = None
+
+    def _get_knowledge_version(self) -> str:
+        """获取知识库版本（基于文件修改时间）"""
+        import hashlib
+        
+        timestamps = []
+        for name, path in KNOWLEDGE_BASE_PATHS.items():
+            if os.path.exists(path):
+                json_files = glob.glob(os.path.join(path, "*.json"))
+                for f in sorted(json_files):
+                    try:
+                        mtime = os.path.getmtime(f)
+                        timestamps.append(str(mtime))
+                    except:
+                        pass
+        
+        if not timestamps:
+            return "unknown"
+        
+        version_str = "|".join(timestamps)
+        return hashlib.md5(version_str.encode()).hexdigest()[:8]
 
     def full_analysis(self, js_sources: Dict[str, str]) -> Dict:
         """
@@ -145,7 +206,6 @@ class AnalysisCoordinator:
             print(f"\n📦 检测到包名: {self.current_package}")
             # 设置RAG上下文，只用于记录，不用于过滤
             self.rag.set_package_context(self.current_package)
-            # 不刷新代理的检索器，保持无过滤状态
         else:
             print("\n🌐 未检测到特定包名，执行全量检索")
         
@@ -183,7 +243,7 @@ class AnalysisCoordinator:
         rootcause_res = self.rootcause_agent.find_rootcauses_and_audit(
             NodeJs_type=retriever_NodeJs,
             js_code=js_code,
-            package_name=self.current_package  # 新增：传递包名
+            package_name=self.current_package
         )
         
         final_vuln = rootcause_res.get("final_vulnerability", {})
@@ -275,6 +335,22 @@ class KnowledgeCoordinator:
     def __init__(self):
         # 使用支持包过滤的RAG管理器
         self.rag = PackageFilteredRAGManager()
+        
+        # ===== 向量库持久化逻辑 =====
+        cache_dir = Path("./vectorstore")
+        force_rebuild = False
+        
+        if not cache_dir.exists():
+            force_rebuild = True
+            print("📦 首次运行，构建向量库缓存...")
+        
+        if os.environ.get("REBUILD_VECTORSTORE") == "1":
+            force_rebuild = True
+            print("🔄 环境变量 REBUILD_VECTORSTORE=1，强制重建向量库...")
+        
+        self.rag.refresh_all(force_rebuild=force_rebuild)
+        # ===== 向量库持久化逻辑结束 =====
+        
         self.retriever_NodeJs = self.rag.retriever_NodeJs
         self.retriever_rootcause = self.rag.retriever_rootcause
         self.retriever_exploit = self.rag.retriever_exploit
@@ -303,7 +379,6 @@ class KnowledgeCoordinator:
         if self.current_package:
             logger.info(f"📦 检测到包名: {self.current_package}")
             self.rag.set_package_context(self.current_package)
-            # 不刷新代理的检索器，保持无过滤状态
 
         # 加载Node.js类型层次结构
         hierarchy_str = self.rag.get_hierarchy()
@@ -319,7 +394,7 @@ class KnowledgeCoordinator:
         rootcause_res = self.rootcause_agent.find_rootcauses_and_audit(
             NodeJs_type=retriever_NodeJs,
             js_code=js_code,
-            package_name=self.current_package  # 新增：传递包名
+            package_name=self.current_package
         )
         
         # 将包名注入到final_vulnerability
@@ -371,7 +446,7 @@ class KnowledgeCoordinator:
             if new_analysis:
                 update_result = self.poc_validator.update_rootcause_based_on_poc(new_analysis)
                 rootcause_update_status = "更新成功" if update_result.get("success") else "更新失败"
-                self.rag.refresh_all()
+                self.rag.refresh_all(force_rebuild=True)  # 知识库更新，强制重建
                 
                 response_data["update_status"] = {
                     "rootcause_updated": update_result.get("success", False),
@@ -479,7 +554,7 @@ def build_tree_data(
     vulnerablename=None,
     detailed_steps=None,
     rootcausequery=None,
-    current_package=None  # 新增参数：当前分析的包名
+    current_package=None
 ):
     """
     构建可前端识别的图结构
@@ -597,20 +672,17 @@ def build_tree_data(
                         exp_node = add_node(exp, "rootcause", f"漏洞利用: {exp}")
                         add_edge(add_node(nodejs_name, "nodejs_type"), exp_node)
 
-    # 🔒 按包名过滤缺失根因 - 只处理与当前包相关的
+    # 按包名过滤缺失根因
     missing_rootcauses = []
     for rc_name in rootcause_name_to_pattern:
         rc_package = rootcause_name_to_package.get(rc_name)
         
-        # 如果没有指定当前包，或者根因属于当前包，或者是通用根因（无包名）
         if not current_package:
             if rc_name not in node_cache:
                 missing_rootcauses.append(rc_name)
         else:
-            # 指定了包名：只处理同包的根因
             if rc_package == current_package and rc_name not in node_cache:
                 missing_rootcauses.append(rc_name)
-            # 或者根因没有包名但明显与当前漏洞相关（通过漏洞名称匹配）
             elif not rc_package and vulnerablename and vulnerablename.lower() in rc_name.lower():
                 if rc_name not in node_cache:
                     missing_rootcauses.append(rc_name)
@@ -622,7 +694,7 @@ def build_tree_data(
             rc_node = add_node(rc_name, "rootcause", rootcause_name_to_pattern.get(rc_name, "未定义描述"))
             add_edge(complex_node, rc_node)
 
-    # 攻击步骤连线 - 只处理当前漏洞的步骤
+    # 攻击步骤连线
     if vulnerablename and detailed_steps and vulnerablename in node_cache:
         target_node = node_cache[vulnerablename]
         prev_node = None
@@ -630,19 +702,15 @@ def build_tree_data(
             name_match = re.search(r"Name: (.+?)(?:\n|$)", step_info)
             impact_match = re.search(r"Impact: (.+?)(?:\n|$)", step_info)
             
-            # ========== 新增：按包名过滤攻击步骤 ==========
-            # 检查步骤是否属于当前包
+            # 按包名过滤攻击步骤
             applicable_match = re.search(r"applicable_to: \[([^\]]+)\]", step_info)
             if applicable_match and current_package:
                 applicable_str = applicable_match.group(1)
-                # 如果不是通用步骤，也不属于当前包，就跳过
                 if '"*"' not in applicable_str and "'*'" not in applicable_str:
                     if f'"{current_package}"' not in applicable_str and f"'{current_package}'" not in applicable_str:
-                        # 兼容无@符号
                         pkg_without_at = current_package.replace('@', '')
                         if f'"{pkg_without_at}"' not in applicable_str and f"'{pkg_without_at}'" not in applicable_str:
                             continue
-            # ========== 新增结束 ==========
             
             if name_match and impact_match:
                 step_name = name_match.group(1).strip()
@@ -701,7 +769,6 @@ def save_results_to_file(result: Dict, module_name: str) -> Path:
         f.write(f"**类型摘要**: {nodejs_res.get('analysis', {}).get('summary', '无摘要')}\n\n")
         f.write("**相关Node.js类型**:\n")
         for nodejs_type in nodejs_res.get("retriever_NodeJs", []):
-            # 截断过长的内容
             short_type = nodejs_type[:200] + "..." if len(nodejs_type) > 200 else nodejs_type
             f.write(f"- {short_type}\n")
         f.write("\n")
@@ -823,10 +890,8 @@ def debug_vectorstore():
     
     # 2. 尝试检索 @mcpjam/inspector
     try:
-        # 使用子类但不设置包名上下文，检索所有文档
         rag = PackageFilteredRAGManager()
         
-        # 检查 rootcause 检索器
         if rag._retriever_rootcause:
             print(f"   ✅ rootcause 检索器已初始化")
             
@@ -853,6 +918,7 @@ def debug_vectorstore():
 
 if __name__ == "__main__":
     import sys
+    import glob  # 添加glob导入
     
     # 调试向量库
     debug_vectorstore()

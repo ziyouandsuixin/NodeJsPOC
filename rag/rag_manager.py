@@ -15,9 +15,9 @@ class RAGManager:
             cls._instance._retriever_NodeJs = None
             cls._instance._retriever_rootcause = None  
             cls._instance._retriever_exploit = None
-            # 新增：包名到类别路径的映射
+            # 包名到类别路径的映射
             cls._instance.package_to_category = {}
-            cls._instance.refresh_all()  # 初始化加载
+            # 注意：不在这里调用 refresh_all，让外部控制
         return cls._instance
 
     @property
@@ -33,39 +33,42 @@ class RAGManager:
     def retriever_exploit(self):
         return self._retriever_exploit
 
-    def refresh_all(self):
-        """从知识库重新构建所有 RAG 索引"""
+    def refresh_all(self, force_rebuild: bool = False):
+        """从知识库重新构建所有 RAG 索引
+        :param force_rebuild: 是否强制重建（忽略缓存）
+        """
         print("RAGManager: 重新加载所有 retriever...")
-        # 在 RAGManager.refresh_all() 里加
         print(f"📖 正在读取 NodeJs: {KNOWLEDGE_BASE_PATHS['NodeJs']}")
         print(f"📖 正在读取 rootcause: {KNOWLEDGE_BASE_PATHS['rootcause']}")
         print(f"📖 正在读取 exploit: {KNOWLEDGE_BASE_PATHS['exploit']}")
-        # ✅ 改为给私有属性赋值
+        
         self._retriever_NodeJs = build_vectorstore(
             KNOWLEDGE_BASE_PATHS["NodeJs"],
             top_k=5,
-            doc_type="NodeJs"
+            doc_type="NodeJs",
+            force_rebuild=force_rebuild
         )
         self._retriever_rootcause = build_vectorstore(
             KNOWLEDGE_BASE_PATHS["rootcause"],
             top_k=5,
-            doc_type="rootcause"
+            doc_type="rootcause",
+            force_rebuild=force_rebuild
         )
         self._retriever_exploit = build_vectorstore(
             KNOWLEDGE_BASE_PATHS["exploit"],
             top_k=5,
-            doc_type="exploit"
+            doc_type="exploit",
+            force_rebuild=force_rebuild
         )
         
-        # ===== 新增：构建包名到类别路径的映射 =====
+        # 构建包名到类别路径的映射
         self._build_package_category_index()
         
-        # ===== 新增：构建层次结构字符串（现在真正赋值）=====
+        # 构建层次结构字符串
         self._build_hierarchy_str()
         
         print("✅ RAGManager: 已完成刷新。")
     
-    # ===== 新增方法：构建包名索引 =====
     def _build_package_category_index(self):
         """从根因知识库构建包名到类别路径的映射"""
         if not self._retriever_rootcause:
@@ -82,7 +85,6 @@ class RAGManager:
         
         print(f"📊 构建了 {len(self.package_to_category)} 个包名到路径的映射")
     
-    # ===== 新增方法：构建层次结构 =====
     def _build_hierarchy_str(self):
         """从NodeJs检索器构建层次结构字符串"""
         if not self._retriever_NodeJs:
@@ -121,7 +123,6 @@ class RAGManager:
             print(f"⚠️ 构建层次结构时出错: {e}")
             self.hierarchy_str = "层次结构构建失败"
     
-    # ===== 新增方法：获取包名的类别路径 =====
     def get_category_path_for_package(self, package_name: str) -> str:
         """根据包名获取类别路径"""
         return self.package_to_category.get(package_name, "")
