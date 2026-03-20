@@ -1,0 +1,2516 @@
+{
+  "NodeJsSecurity": {
+    "Base": [
+      {
+        "name": "NpmPackages",
+        "category": "Base",
+        "pattern": "npm生态系统中的各种包，包含代码生成、构建工具、测试框架、Web框架等",
+        "symptoms": [
+          "发布到npm registry的包",
+          "包含package.json文件",
+          "支持Node.js环境"
+        ],
+        "related_exploit": []
+      },
+      {
+        "name": "CodeGeneratorTools",
+        "category": "Base",
+        "pattern": "根据配置文件（OpenAPI/Swagger/GraphQL等）自动生成代码的工具",
+        "symptoms": [
+          "从规范文件生成代码",
+          "支持模板渲染",
+          "包含代码插值逻辑"
+        ],
+        "related_exploit": [
+          "CodeInjection.UnsanitizedTemplateInterpolation"
+        ]
+      }
+    ],
+    "NpmPackages": [
+      {
+        "name": "CodeGeneratorPackages",
+        "category": "NpmPackages",
+        "pattern": "专门用于代码生成的npm包",
+        "symptoms": [
+          "生成代码文件",
+          "依赖模板",
+          "解析配置文件"
+        ],
+        "related_exploit": [
+          "CodeInjection.UnsanitizedTemplateInterpolation"
+        ]
+      },
+      {
+        "name": "WebFrameworkPackages",
+        "category": "NpmPackages",
+        "pattern": "提供HTTP服务、路由、中间件功能的npm包",
+        "symptoms": [
+          "创建HTTP服务器",
+          "定义路由",
+          "处理请求响应",
+          "提供调试接口"
+        ],
+        "related_exploit": [
+          "CommandInjection.UnauthenticatedHTTP",
+          "AuthenticationFlaw.MissingForCriticalAPI",
+          "InsecureDefaultConfig.PublicNetworkExposure"
+        ]
+      }
+    ],
+    "CodeGeneratorTools": [
+      {
+        "name": "OpenAPICodeGenerators",
+        "category": "CodeGeneratorTools",
+        "pattern": "基于OpenAPI规范生成客户端/服务端代码的工具",
+        "symptoms": [
+          "解析OpenAPI YAML/JSON文件",
+          "使用模板生成目标语言代码",
+          "支持const、enum等OpenAPI特性",
+          "包含字符串插值和代码拼接"
+        ],
+        "related_exploit": [
+          "InputValidationFlaw.OpenAPIConstValue"
+        ]
+      }
+    ],
+    "CodeGeneratorPackages": [
+      {
+        "name": "NpmMockGenerator",
+        "category": "CodeGeneratorPackages",
+        "pattern": "生成mock代码的npm包，用于测试和开发",
+        "symptoms": [
+          "从API规范生成模拟数据",
+          "创建测试用的mock服务",
+          "生成TypeScript/JavaScript代码"
+        ],
+        "related_exploit": [
+          "CommandInjection.TemplateInterpolation"
+        ]
+      }
+    ],
+    "NpmMockGenerator": [
+      {
+        "name": "@orval/mock CommandInjection",
+        "category": "NpmMockGenerator",
+        "pattern": "@orval/mock 解析 OpenAPI schema 的 `const` 类型属性时，未对值做序列化/转义，直接插值到生成的 TypeScript 代码中，依赖输入的可信性实现代码生成安全",
+        "symptoms": [
+          "项目使用 @orval/mock 7.x<7.20.0 或 8.0.0-rc.0<8.0.3 版本生成 mock 代码",
+          "OpenAPI 规范中包含 `const` 字段，且该字段值直接出现在生成的 .ts/.js 文件中",
+          "生成 mock 代码时依赖第三方/不可信来源的 OpenAPI 规范文件",
+          "重点关注 CommandInjection.TemplateInterpolation 漏洞类型",
+          "可能会因为 UnsanitizedConstValue 从而引起代码注入，可关注是否出现 `const` 值未转义直接拼接的情况"
+        ],
+        "related_exploit": [
+          "CodeInjection.UnsanitizedTemplateInterpolation",
+          "CommandInjection.Nodejs.ChildProcessAbuse",
+          "InputValidationFlaw.OpenAPIConstValue",
+          "RemoteCodeExecution.GeneratedCodeInjection"
+        ]
+      }
+    ],
+    "OpenAPICodeGenerators": [
+      {
+        "name": "OrvalMockGeneratorVulnerability",
+        "category": "OpenAPICodeGenerators",
+        "pattern": "OpenAPI代码生成器在处理const字段时的漏洞模式",
+        "symptoms": [
+          "直接拼接const值到生成的代码中",
+          "缺乏输入验证和转义机制",
+          "依赖外部输入的信任模型"
+        ],
+        "related_exploit": [
+          "TemplateInjection.OpenAPIConst",
+          "CodeInjection.UntrustedInput"
+        ]
+      }
+    ],
+    "WebFrameworkPackages": [
+      {
+        "name": "@mcpjam/inspector",
+        "category": "WebFrameworkPackages",
+        "pattern": "MCP调试与检查工具，提供HTTP接口用于服务诊断和管理",
+        "symptoms": [
+          "默认监听0.0.0.0:6274",
+          "提供/api/mcp/connect等调试接口",
+          "用于连接和管理MCP服务器实例"
+        ],
+        "related_exploit": [
+          "InsecureDefaultConfig.PublicNetworkExposure",
+          "AuthenticationFlaw.MissingForCriticalAPI"
+        ]
+      },
+      {
+        "name": "OpenCode_XSS_To_Local_RCE",
+        "category": "WebFrameworkPackages",
+        "pattern": "OpenCode Web UI存在三重缺陷叠加导致的链式攻击：1) Markdown渲染器对LLM响应未做HTML净化，允许注入恶意JavaScript；2) 支持通过`?url=`参数加载外部服务器的聊天会话，突破信任边界；3) `/pty/`端点允许在本地执行任意命令且未校验请求来源。攻击者可构造恶意聊天会话，诱骗用户访问带`?url=`参数的链接，触发XSS后调用`/pty/`端点执行本地命令，实现从XSS到RCE的攻击链",
+        "symptoms": [
+          "项目使用 opencode-ai 版本 < 1.1.10",
+          "Web UI 使用 Markdown 渲染 LLM 响应，直接插入 HTML 到 DOM，无 DOMPurify 净化",
+          "支持通过 ?url= 参数加载外部服务器的聊天会话，可突破信任边界",
+          "/pty/ 端点允许在本地执行任意命令，且未对请求来源做严格校验",
+          "恶意 JavaScript 可以在 localhost:4096 同源下发起请求，调用 /pty/ 端点",
+          "最终表现为攻击者可以通过恶意链接，在用户本地机器上执行任意命令"
+        ],
+        "related_exploit": [
+          "CrossSiteScripting.UnsanitizedMarkdownRendering",
+          "TrustBoundaryViolation.ExternalContentLoading",
+          "RemoteCodeExecution.LocalApiAbuse",
+          "Injection.XSSToRCE",
+          "XSS.UnsanitizedMarkdown",
+          "TrustBoundary.ExternalContentLoading",
+          "RCE.LocalApiAbuse"
+        ]
+      }
+    ],
+    "@mcpjam/inspector": [
+      {
+        "name": "@mcpjam/inspector Unauthenticated RCE via Command Injection",
+        "category": "WebFrameworkPackages",
+        "package": "@mcpjam/inspector",
+        "affected_versions": "≤1.4.2",
+        "cve": "CVE-2026-23744",
+        "pattern": "@mcpjam/inspector 存在“无认证+命令注入”叠加漏洞：默认监听 0.0.0.0 使接口远程可访问，核心接口 /api/mcp/connect 无身份验证，且直接提取用户可控的 command/args 执行系统命令，恶意 HTTP 请求可注入任意命令，无需用户交互即可触发远程代码执行，依赖“认证校验+命令白名单”双重防护",
+        "symptoms": [
+          "项目使用 @mcpjam/inspector 版本 ≤1.4.2（含1.4.0-1.4.2）",
+          "启动服务后，通过 `netstat -an | findstr 6274` 可看到监听地址为 0.0.0.0:6274（而非127.0.0.1）",
+          "向 /api/mcp/connect 发送含 `command: cmd.exe`、`args: [/c, calc]` 的 POST 请求，目标主机弹出计算器（Windows）或执行对应命令（Linux）",
+          "核心代码中存在 `hostname: \"0.0.0.0\"` 的监听配置，且 /api/mcp/connect 接口无 token/密码校验逻辑",
+          "执行命令无白名单限制，可注入 `whoami`、`ls`、`rm -rf /` 等任意系统命令"
+        ],
+        "related_exploit": [
+          "CommandInjection.UnauthenticatedHTTP",
+          "RCE.NoUserInteraction",
+          "AuthenticationFlaw.MissingForCriticalAPI",
+          "InputValidationFlaw.UnsanitizedSystemCommand",
+          "InsecureDefaultConfig.PublicNetworkExposure"
+        ]
+      }
+    ],
+    "Injection": [
+      {
+        "name": "VeramoDataStoreSQLInjection",
+        "language": "TypeScript",
+        "category": "Base",
+        "pattern": "Veramo data-store 模块的 decorateQB() 函数处理排序参数 order 时，将用户可控的 column 字段直接作为 SQL 别名拼接进 orderBy 子句，未做转义、过滤或参数化处理，攻击者可构造恶意 column 值注入任意 SQL 片段，突破数据访问限制",
+        "vulnerability_id": "GHSA-38cw-85xc-xr9x",
+        "package": "@veramo/data-store",
+        "affected_versions": "<6.0.2",
+        "vuln_type": [
+          "SQL Injection",
+          "Unsanitized User Input",
+          "QueryBuilder Misuse"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-38cw-85xc-xr9x",
+        "symptoms": [
+          "项目使用 @veramo/data-store 版本低于 6.0.2",
+          "代码中通过 decorateQB() 处理用户传入的 order 排序参数，且 column 字段直接来自前端/外部输入",
+          "构造含闭合引号、额外 SQL 子句的 column 参数时，查询返回非预期数据（如其他用户的 DID 信息）",
+          "重点关注 SQLInjection.UnsanitizedUserInput 漏洞类型",
+          "可能因直接拼接用户输入到 SQL 语句，引发越权查询/修改数据的风险",
+          "TypeScript 编译时类型校验无法拦截运行时的恶意字符串注入"
+        ],
+        "related_exploit": [
+          "SQLInjection.UnsanitizedColumnAlias",
+          "InputValidationFlaw.SQLQueryConcatenation",
+          "LogicFlaw.BypassTypeScriptCompileCheck",
+          "AccessControlFlaw.UnauthorizedDataAccess"
+        ]
+      },
+      {
+        "name": "RenovateHelmCommandInjection",
+        "language": "TypeScript",
+        "category": "Base",
+        "pattern": "Renovate在处理Helm Chart.yaml文件时，将用户可控的repository字段直接拼接至helm registry login系统命令中，未对参数进行充分转义处理。攻击者可通过在repository字段中注入命令分隔符（如||、;、&）和恶意指令，使原本的认证命令被拆分，非预期的恶意命令被执行，导致命令注入漏洞",
+        "vulnerability_id": "GHSA-3f44-xw83-3pmg",
+        "package": "renovate",
+        "affected_versions": "<37.440.7",
+        "vuln_type": [
+          "Command Injection",
+          "OS Command Injection",
+          "Argument Injection"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-3f44-xw83-3pmg",
+        "symptoms": [
+          "项目使用 renovate 版本低于 37.440.7",
+          "处理 Helm Chart.yaml 的 repository 字段后直接拼接系统命令",
+          "未使用 shlex.quote() 等工具对 repository 字段进行充分参数转义",
+          "helm registry login 命令执行依赖用户输入的 repository 参数",
+          "拥有仓库写入权限的攻击者可构造恶意 repository 字段值",
+          "重点关注 CommandInjection.UnsanitizedCommandArgument 漏洞类型",
+          "可能会因为命令参数未转义，通过注入分隔符执行任意系统命令"
+        ],
+        "related_exploit": [
+          "CommandInjection.UnsanitizedArgumentConcatenation",
+          "InputValidationFlaw.MissingArgumentEscaping",
+          "ExecutionFlaw.InsecureSystemCommandExecution",
+          "AccessControlFlaw.RepositoryInputMisuse"
+        ]
+      },
+      {
+        "name": "pnpmEnvVarCommandInjection",
+        "language": "TypeScript",
+        "category": "Base",
+        "pattern": "pnpm 在解析 .npmrc 配置文件时，支持通过 `${VAR}` 语法进行环境变量替换。当配置 `tokenHelper`（用于获取私有仓库令牌的工具路径）时，`loadToken` 函数会执行该工具路径。该函数仅校验路径是否为绝对路径且存在，未对路径内容做命令字符净化，且使用 `spawnSync(helperPath, { shell: true })` 执行。攻击者可通过控制环境变量值，在路径中注入命令分隔符（如 `;`、`&&`），导致任意命令执行",
+        "vulnerability_id": "GHSA-2phv-j68v-wwqx",
+        "package": "pnpm",
+        "affected_versions": ">=10.0.0 <10.27.0",
+        "vuln_type": [
+          "Command Injection",
+          "OS Command Injection",
+          "Environment Variable Injection",
+          "Shell Injection"
+        ],
+        "cve": "CVE-2025-69262",
+        "ghsa": "GHSA-2phv-j68v-wwqx",
+        "symptoms": [
+          ".npmrc 支持 ${VAR} 格式的环境变量替换",
+          "tokenHelper 配置可关联用户可控的环境变量",
+          "loadToken 函数使用 spawnSync 且 shell: true 执行路径",
+          "仅校验路径是否为绝对路径+存在，未净化命令特殊字符",
+          "攻击者可通过控制环境变量注入恶意命令",
+          "执行 pnpm install 等操作时触发恶意命令执行",
+          "重点关注 CommandInjection.EnvVarSubstitution 漏洞类型",
+          "可能会因为 shell 执行+输入未净化，通过环境变量注入任意系统命令"
+        ],
+        "related_exploit": [
+          "CommandInjection.ShellEnabledExecution",
+          "InputValidationFlaw.UnsanitizedEnvVarSubstitution",
+          "ExecutionFlaw.InsecureSpawnWithShell",
+          "ConfigurationFlaw.VulnerableEnvVarReplacement",
+          "CommandInjection.EnvVarDriven",
+          "PackageManagerVuln.ShellExecutionInjection"
+        ]
+      },
+      {
+        "name": "VegaVlSelectionTuplesXSS",
+        "language": "TypeScript",
+        "category": "Base",
+        "pattern": "Vega 的 vlSelectionTuples 函数未校验传入参数的类型，直接调用其 map 方法。攻击者可通过用户可控的 Vega JSON 规范注入包含自定义 map 方法的恶意对象，该 map 方法引用全局 gadget 函数（如 VEGA_DEBUG 中的 CanvasHandler.prototype.on），通过 vlSelectionTuples 触发调用，最终在应用上下文执行任意 JavaScript 代码，实现 DOM XSS。",
+        "vulnerability_id": "GHSA-829q-m3qg-ph8r",
+        "package": "vega",
+        "affected_versions": "<5.32.0",
+        "vuln_type": [
+          "Cross-site Scripting",
+          "DOM-based XSS",
+          "Gadget Chain XSS"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-829q-m3qg-ph8r",
+        "symptoms": [
+          "应用将 vega、vega.View 实例或 VEGA_DEBUG 挂载到 window 等全局作用域",
+          "允许用户上传或定义自定义 Vega/Vega-Lite JSON 规范",
+          "vlSelectionTuples 函数未检查传入参数是否为数组，直接调用其 map 方法",
+          "全局存在可被滥用的 gadget 函数（如原型方法、eval、console.log 等）",
+          "攻击者可通过构造恶意 Vega JSON 规范，在 vlSelectionTuples 参数中注入包含自定义 map 方法的对象",
+          "用户触发特定事件（如鼠标移动）时，恶意 JavaScript 代码被执行"
+        ],
+        "related_exploit": [
+          "CrossSiteScripting.DOMBased",
+          "InputValidationFlaw.UncheckedParameterType",
+          "TrustBoundaryViolation.UserControlledObjectInjection",
+          "WebSecurityFlaw.GlobalGadgetAbuse",
+          "CrossSiteScripting.DOMBasedGadgetAbuse",
+          "WebSecurityFlaw.UnvalidatedUserControlledObjects"
+        ]
+      },
+      {
+        "name": "SignalKCodeInjectionViaNpmVersion",
+        "language": "TypeScript",
+        "category": "Base",
+        "pattern": "Signal K Server App Store 模块提供 REST API 供管理员安装 npm 包扩展功能。安装接口的 version 参数设计初衷仅接收语义化版本号，但未做任何格式校验和内容净化，直接传递给 npm install 执行。攻击者可构造恶意 version 参数指向包含恶意 postinstall 脚本的 npm 包源（如 GitHub 仓库简写、Git URL、HTTP(S) tarball 链接），npm 安装时会自动执行 postinstall 脚本，导致服务器端任意代码执行。",
+        "vulnerability_id": "GHSA-93jc-vqqc-vvvh",
+        "package": "signalk-server",
+        "affected_versions": "<2.19.0",
+        "vuln_type": [
+          "Code Injection",
+          "Command Injection",
+          "NPM Version Injection"
+        ],
+        "cve": "CVE-2025-68619",
+        "ghsa": "GHSA-93jc-vqqc-vvvh",
+        "symptoms": [
+          "version 参数接收任意字符串，未校验是否为语义化版本号",
+          "仅验证包名存在性，未验证 version 对应的包来源合法性",
+          "npm install 会自动执行恶意包内的 postinstall 生命周期脚本",
+          "脚本以 Signal K Server 进程权限运行，可执行任意系统命令",
+          "攻击者可通过构造恶意 version 参数注入并执行任意代码",
+          "最终表现为攻击者获取服务器完全控制权，篡改船舶数据、植入后门或破坏系统"
+        ],
+        "related_exploit": [
+          "CodeInjection.UnsanitizedNpmVersion",
+          "ExecutionFlaw.NpmPostinstallScriptAbuse",
+          "InputValidationFlaw.MissingVersionCheck",
+          "SupplyChainAttack.MaliciousNpmPackage",
+          "CodeInjection.NpmVersionParameter",
+          "SupplyChainAttack.MaliciousPostinstallScript"
+        ]
+      },
+      {
+        "name": "TRPCPrototypePollution",
+        "language": "TypeScript",
+        "category": "Base",
+        "pattern": "tRPC 的 `formDataToObject` 函数在处理 FormData 时，支持通过括号/点 notation（如 `user[name]`、`addr.city`）创建嵌套对象，但未过滤 `__proto__`、`constructor`、`prototype` 等危险键。攻击者可构造恶意 FormData 字段名（如 `__proto__[isAdmin]`），`set` 函数递归处理时直接操作 `Object.prototype`，导致所有对象继承恶意属性，引发权限绕过或拒绝服务。漏洞仅在使用 `experimental_caller` 或 `experimental_nextAppDirCaller` 时触发。",
+        "vulnerability_id": "GHSA-43p4-m455-4f4j",
+        "package": "@trpc/server",
+        "affected_versions": ">=10.27.0 <10.45.3 || >=11.0.0 <11.8.0",
+        "vuln_type": [
+          "Prototype Pollution",
+          "CWE-1321",
+          "Input Validation Flaw",
+          "FormData Processing Vulnerability"
+        ],
+        "cve": "CVE-2025-68130",
+        "ghsa": "GHSA-43p4-m455-4f4j",
+        "symptoms": [
+          "依赖 `@trpc/server`，版本为 >=10.27.0 <10.45.3 或 >=11.0.0 <11.8.0",
+          "使用 Next.js App Router 适配器的 `nextAppDirCaller`，自动将 FormData 转换为对象",
+          "`formDataToObject` 函数未过滤危险键，直接递归处理字段名",
+          "业务逻辑通过对象属性判断权限（如 `if (user.isAdmin)`）或依赖默认对象方法",
+          "攻击者构造含 `__proto__` 字段名的 FormData 即可触发污染",
+          "污染后普通对象会继承恶意属性（如 `{}.isAdmin === true`）",
+          "重点关注「原型污染（CWE-1321）」「危险输入未过滤」漏洞类型"
+        ],
+        "related_exploit": [
+          "DataProcessing.PrototypePollution.UnfilteredKeys",
+          "Adapter.NextAppDir.FormDataInjection",
+          "LogicBypass.AuthorizationViaProtoPollution",
+          "DataInjection.DangerousFormDataFields"
+        ]
+      },
+      {
+        "name": "ViteRSCPluginDevServerRCE",
+        "language": "TypeScript",
+        "category": "Base",
+        "pattern": "@vitejs/plugin-rsc 插件的开发服务器在处理客户端请求时，loadServerAction、decodeReply、decodeAction 等函数将用户可控的请求参数直接作为动态导入（`import()`）的模块 URL，且未对导入地址做任何安全校验。攻击者可构造 `data:text/javascript` 等伪协议格式的恶意 URL，触发动态导入逻辑直接执行任意 JavaScript 代码，实现远程代码执行。漏洞无需身份验证，仅需能访问开发服务器网络即可触发。",
+        "vulnerability_id": "GHSA-j76j-5p5g-9wfr",
+        "package": "@vitejs/plugin-rsc",
+        "affected_versions": "<=0.5.5",
+        "vuln_type": [
+          "Code Injection",
+          "Remote Code Execution",
+          "Dynamic Import Vulnerability",
+          "CWE-94"
+        ],
+        "cve": "CVE-2025-67489",
+        "ghsa": "GHSA-j76j-5p5g-9wfr",
+        "symptoms": [
+          "使用 @vitejs/plugin-rsc 版本 <=0.5.5",
+          "开发服务器暴露后可被公网/内网直接访问",
+          "loadServerAction、decodeReply、decodeAction函数处理请求头/请求体输入",
+          "直接使用用户可控输入作为动态导入的模块URL",
+          "未校验导入URL的协议、格式与可信来源",
+          "允许data:text/javascript等伪协议URL执行动态导入",
+          "漏洞仅影响开发环境，生产环境无此风险",
+          "攻击者无需账号、令牌等身份凭证即可发起攻击"
+        ],
+        "related_exploit": [
+          "CodeInjection.UnsanitizedDynamicImport",
+          "RCE.DevServerUnauthExec",
+          "InputValidation.MissingURLSanitization",
+          "ModuleImport.UnrestrictedSource"
+        ]
+      },
+      {
+        "name": "MuiXDataGridStoredXSS",
+        "language": "TypeScript",
+        "category": "Base",
+        "pattern": "@mui/x-data-grid 系列组件在渲染用户可控的表格单元格数据时，未对输入做 HTML 转义处理，直接通过 `dangerouslySetInnerHTML` 或 `innerHTML` 将输入解析为 DOM 内容。攻击者可向表格注入包含 JavaScript 的恶意数据，当其他用户访问包含该表格的页面时，恶意脚本自动执行，实现存储型 XSS 攻击。漏洞影响 @mui/x-data-grid 全系列（基础版/Pro版/Premium版）及通过 Open WebUI 等使用该组件的应用。",
+        "vulnerability_id": "GHSA-8wvc-869r-xfqf",
+        "package": "@mui/x-data-grid",
+        "affected_versions": "<6.20.0 || >=7.0.0-beta.0 <7.0.0-beta.5",
+        "vuln_type": [
+          "Cross-site Scripting",
+          "Stored XSS",
+          "DOM-based XSS",
+          "CWE-79"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-8wvc-869r-xfqf",
+        "symptoms": [
+          "使用 @mui/x-data-grid 版本 <6.20.0 或 <7.0.0-beta.5",
+          "表格单元格支持展示用户提交的自定义内容",
+          "组件使用 dangerouslySetInnerHTML 或 innerHTML 直接渲染单元格数据",
+          "未对包含 `<script>`、`<img onerror>` 等标签的输入做过滤/转义",
+          "恶意数据存储后，其他用户访问表格即可触发脚本执行",
+          "漏洞影响 @mui/x-data-grid 全系列（基础版/Pro版/Premium版）",
+          "仅影响前端渲染，无服务端代码执行风险，但可窃取前端敏感信息"
+        ],
+        "related_exploit": [
+          "XSS.StoredUserInputRendering",
+          "Frontend.UnsanitizedDOMInsertion",
+          "InputValidation.MissingHTMLEscaping",
+          "CWE-79.ImproperNeutralizationOfInputForWebPage"
+        ]
+      },
+      {
+        "name": "VegaExpressionXSS",
+        "language": "TypeScript",
+        "category": "Base",
+        "pattern": "Vega 可视化库的表达式求值机制存在安全设计缺陷，未限制表达式对全局对象的访问。当应用将 `vega` 库及 `vega.View` 实例挂载到全局 `window` 对象时，`VEGA_DEBUG` 全局变量会暴露 `CanvasHandler.prototype.on` 等内部方法。攻击者可构造恶意 Vega JSON 配置，在 `signals` 事件中将全局暴露的方法赋值给对象 `toString` 属性，并设置 `_handlerIndex` 为 `event.view.eval`。当 JavaScript 运算触发隐式 `toString` 调用时，会执行全局方法，最终通过 `eval` 执行恶意脚本，绕过 Vega 的“安全模式”表达式解释器，形成 DOM 跨站脚本攻击。",
+        "vulnerability_id": "GHSA-7f2v-3qq3-vvjf",
+        "package": "vega",
+        "affected_versions": "<6.2.0",
+        "vuln_type": [
+          "Cross-site Scripting",
+          "DOM-based XSS",
+          "Expression Injection",
+          "CWE-79"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-7f2v-3qq3-vvjf",
+        "symptoms": [
+          "Vega 受影响版本：vega < 6.2.0、vega-expression < 6.1.0/<5.2.1、vega-interpreter <2.2.1/<1.2.1",
+          "应用将 vega 库及 vega.View 实例挂载到全局 window 对象",
+          "应用支持用户自定义 Vega JSON 配置，非仅内置源码配置",
+          "VEGA_DEBUG 全局变量被启用并可通过 window 访问",
+          "表达式求值使用 AST evaluator 模式，漏洞未被该模式阻断",
+          "加载恶意 Vega JSON 配置后，触发鼠标移动等事件会弹出脚本执行弹窗",
+          "通过 window.VEGA_DEBUG 可直接访问 vega 内部组件及方法",
+          "恶意脚本可获取 document.cookie、localStorage 等用户敏感信息",
+          "重点关注 CWE-79（跨站脚本）漏洞类型"
+        ],
+        "related_exploit": [
+          "XSS.DOMBased",
+          "InputValidationFlaw.UnsanitizedExpression",
+          "CodeExecution.ArbitraryJS",
+          "DataTheft.CookieStealing"
+        ]
+      },
+      {
+        "name": "OpenWebUIStoredXSS",
+        "language": "TypeScript",
+        "category": "Base",
+        "pattern": "Open WebUI 的富文本提示词插入功能存在存储型 DOM XSS 漏洞。当启用「Insert Prompt as Rich Text」设置时，应用将用户自定义的提示词内容经 `marked.parse()` 转换为 HTML 后，未做任何 XSS 净化处理，直接通过 `innerHTML` 赋值注入 DOM。攻击者可构造含恶意 JavaScript 的提示词并存储，当受害者通过 `/` 命令调用该提示词时，恶意代码被浏览器解析执行。普通用户触发可导致会话令牌泄露、账户劫持（ATO）；管理员触发时，恶意代码可调用 Open WebUI 的 Functions 接口创建并执行含系统命令的 Python 函数，实现服务器远程代码执行（RCE）。",
+        "vulnerability_id": "GHSA-w7xj-8fx7-wfch",
+        "package": "open-webui",
+        "affected_versions": "<=0.6.34",
+        "vuln_type": [
+          "Cross-site Scripting",
+          "Stored XSS",
+          "DOM-based XSS",
+          "CWE-79"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-w7xj-8fx7-wfch",
+        "symptoms": [
+          "受影响版本：open-webui <= 0.6.34",
+          "应用启用「Insert Prompt as Rich Text」富文本插入设置（默认关闭）",
+          "攻击者拥有提示词创建权限（需 USER_PERMISSIONS_WORKSPACE_PROMPTS_ACCESS）",
+          "漏洞触发需受害者通过 / 命令调用恶意提示词（用户交互必要）",
+          "调用恶意提示词后，浏览器弹出 alert 弹窗或执行非预期 JavaScript 操作",
+          "本地存储中的 auth_token 等会话令牌被非法读取并发送至外部服务器",
+          "管理员触发后，服务器新增未知 Python 函数，包含 os.system 等系统命令调用",
+          "服务器日志中存在来自受害者浏览器的异常 /api/v1/functions/create 请求",
+          "重点关注 CWE-79（跨站脚本）漏洞类型，衍生风险含 CWE-78（命令注入）"
+        ],
+        "related_exploit": [
+          "XSS.StoredDOM",
+          "ATO.AccountHijack",
+          "RCE.RemoteCodeExecution",
+          "DataTheft.SessionToken",
+          "CommandInjection.PythonFunction"
+        ]
+      },
+      {
+        "name": "TypeORMSQLInjectionByObjectParse",
+        "language": "TypeScript",
+        "category": "Base",
+        "pattern": "TypeORM 使用 mysql/mysql2 驱动时，未显式配置 `stringifyObjects: true`，导致底层 sqlstring 库将对象类型的用户输入错误拆解为 SQL 表达式。开发者若直接将未过滤的前端输入（如 `req.body`）传入 `repository.save/update` 方法，攻击者可构造嵌套对象格式的 Payload（如 `{ city: { name: 'Riga', role: 'admin' } }`），使 sqlstring 将其拆解为额外的 SQL 列赋值语句（如 `city = name = 'Riga', role = 'admin'`），突破字段权限限制，实现未授权修改数据库任意列。",
+        "vulnerability_id": "GHSA-q2pj-6v73-8rgj",
+        "package": "typeorm",
+        "affected_versions": "<0.3.26",
+        "vuln_type": [
+          "SQL Injection",
+          "ORM Injection",
+          "Object Parse Injection",
+          "CWE-89"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-q2pj-6v73-8rgj",
+        "symptoms": [
+          "使用 TypeORM 版本低于 0.3.26，且使用 mysql/mysql2 驱动连接数据库",
+          "开发者未对传入 save/update 方法的参数做字段白名单校验，直接使用解构的用户输入",
+          "恶意 Payload 为嵌套对象格式（如 city[name]=Riga&city[role]=admin），可被 sqlstring 拆解为多列赋值的 SQL 表达式",
+          "执行更新操作后，数据库中出现非预期列的修改（如未授权修改用户 role 字段为 admin）",
+          "SQL 语句拼接结果包含额外的列赋值（如 SET `city` = `name` = 'Riga', `role` = 'admin'），无语法错误且可正常执行",
+          "重点关注 SQLInjection 漏洞类型，尤其是对象输入解析导致的列注入"
+        ],
+        "related_exploit": [
+          "SQLInjection.UnsanitizedUserInput",
+          "ORMConfigurationFlaw.StringifyObjectsMissing",
+          "InputValidationFlaw.NoFieldWhitelist",
+          "SQLInjection.ObjectToSQLExpressionParse"
+        ]
+      },
+      {
+        "name": "UptimeKumaNotificationSSTI",
+        "language": "TypeScript",
+        "category": "Base",
+        "pattern": "Uptime Kuma 2.0.0-dev.0 版本的通知模块存在服务器端模板注入漏洞。Webhook、Telegram 等通知类型支持自定义请求体配置，用户输入的自定义内容会通过 `renderTemplate()` 函数直接传递给 Liquid 模板引擎解析。由于该函数未对用户输入进行消毒，且 Liquid 引擎未启用沙箱限制（未禁用 `render` 等危险指令），攻击者（需已认证）可注入恶意模板标签（如 `{% render '/etc/passwd' %}`），触发服务器读取任意文件，泄露敏感信息（如系统配置、凭证文件）。该漏洞同时触发 CWE-36（绝对路径遍历）和 CWE-1336（模板引擎特殊元素未中和）两类弱点。",
+        "vulnerability_id": "GHSA-vffh-c9pq-4crh",
+        "package": "uptime-kuma",
+        "affected_versions": "2.0.0-dev.0",
+        "vuln_type": [
+          "SSTI",
+          "Server-side Template Injection",
+          "Path Traversal",
+          "CWE-1336",
+          "CWE-36"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-vffh-c9pq-4crh",
+        "symptoms": [
+          "使用 Uptime Kuma 2.0.0-dev.0 版本，且配置了 Webhook 或 Telegram 通知",
+          "通知类型启用“Custom Body”（自定义请求体）功能",
+          "代码中存在 renderTemplate() 函数直接接收用户编辑的字段（如 webhookCustomBody）",
+          "Liquid 模板引擎实例化时未配置安全限制（如禁用文件读取指令）",
+          "服务器返回敏感文件内容（如 /etc/passwd）或模板语法执行结果",
+          "发送测试通知后，webhook 接收端收到服务器本地文件内容",
+          "关联 CWE-36（绝对路径遍历）和 CWE-1336（模板引擎特殊元素未中和）漏洞类型",
+          "CVSS 3.1 评分为 6.5（中等严重）"
+        ],
+        "related_exploit": [
+          "SSTI.LiquidTemplateInjection",
+          "PathTraversal.AbsolutePath",
+          "InputValidation.Failure",
+          "TemplateEngine.UnrestrictedSandbox",
+          "SSTI.FileRead.Liquid",
+          "PathTraversal.Absolute",
+          "TemplateEngine.UnsanitizedInput",
+          "PostAuth.Vulnerability"
+        ]
+      },
+      {
+        "name": "sveltekitSuperformsPrototypePollution",
+        "language": "TypeScript",
+        "category": "Base",
+        "pattern": "sveltekit-superforms <=2.27.3 版本的 `parseFormData` 函数在处理表单数据时存在原型污染漏洞。该函数通过 `__superform_json` 参数解析 JSON 数据，并通过 `__superform_file_` 和 `__superform_files_` 前缀的参数处理文件上传。在解析这些参数时，`setPaths` 函数未过滤 `__proto__`、`prototype` 等危险关键字，允许攻击者通过构造 `__superform_file___proto__.xxx` 格式的参数，将恶意属性注入 `Object.prototype`。若下游应用依赖受污染的原型对象（如使用 `nodemailer` 发送邮件），可触发 Gadget 链实现远程代码执行（RCE）；即使无 Gadget，也可能导致拒绝服务（DoS）、类型混淆等危害。",
+        "vulnerability_id": "GHSA-hwmc-4c8j-xxj7",
+        "package": "sveltekit-superforms",
+        "affected_versions": "<=2.27.3",
+        "vuln_type": [
+          "Prototype Pollution",
+          "CWE-1321",
+          "FormData Parsing Vulnerability",
+          "Gadget Chain RCE"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-hwmc-4c8j-xxj7",
+        "symptoms": [
+          "使用 sveltekit-superforms <=2.27.3 版本，且通过 superValidate 函数处理表单数据",
+          "表单提交包含 __superform_json 参数（值为 JSON 格式），且存在 __superform_file_ 或 __superform_files_ 前缀的参数",
+          "应用中使用依赖对象原型的下游库（如 nodemailer、lodash 等）",
+          "系统出现全局行为异常（如 toString 方法失效、函数执行异常、无权限操作成功）",
+          "表单提交后系统出现全局函数失效（如 toString 返回异常值）",
+          "下游依赖库（如 nodemailer）执行异常，出现非预期命令执行",
+          "关联 CWE-1321（原型污染），CVSS v4 评分为 8.3（高危）"
+        ],
+        "related_exploit": [
+          "PrototypePollution.ObjectPrototypeInjection",
+          "InputValidation.Failure",
+          "GadgetChain.RCE",
+          "FormDataParsing.UnsanitizedInput",
+          "PrototypePollution.ObjectInjection",
+          "GadgetChain.NodemailerRCE",
+          "PostExploitation.RCE"
+        ]
+      },
+      {
+        "name": "FlowiseSupabaseFilterInjection",
+        "language": "TypeScript",
+        "category": "Base",
+        "pattern": "Flowise 的 Supabase 向量存储节点存在多类型注入漏洞。节点将用户可控的 `supabaseRPCFilter` 参数直接传入 `FilterParser.parseFilterString()` 解析，未做任何前置校验（长度限制、危险字符过滤、Unicode 解码校验），且解析结果直接作用于 PostgreSQL（pgvector）数据库的 RPC 查询，无二次校验。攻击者可构造多种恶意 payload：包含 SQL 注入字符（如 `' OR 1=1 --`）篡改查询逻辑；通过 Unicode 编码（如 `eval\\u0028`）绕过关键词拦截执行任意代码；构造超长过滤链触发拒绝服务；若 Supabase 未配置 RLS，还可越权访问其他用户的私有向量数据。",
+        "vulnerability_id": "GHSA-7944-7c6r-55vv",
+        "package": "flowise",
+        "affected_versions": "<=3.0.5",
+        "vuln_type": [
+          "SQL Injection",
+          "Remote Code Execution",
+          "Denial of Service",
+          "Access Control Bypass",
+          "CWE-89",
+          "CWE-94",
+          "CWE-400",
+          "CWE-285"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-7944-7c6r-55vv",
+        "symptoms": [
+          "用户可自定义 supabaseRPCFilter 字符串配置过滤规则",
+          "FilterParser 仅拦截 eval/process 等明文字符，未处理 Unicode 编码绕过",
+          "解析后的过滤函数直接作用于 PostgreSQL（pgvector）数据库查询",
+          "supabaseRPCFilter 无长度限制，可构造超长过滤链触发 DoS",
+          "输入包含 '、;、-- 等 SQL 特殊字符时，未被转义直接拼接进数据库查询",
+          "未配置 RLS 时，恶意过滤条件可跳过 user_id 等权限校验，访问所有向量数据",
+          "重点关注 SQLInjection、RLS 绕过漏洞类型"
+        ],
+        "related_exploit": [
+          "InputValidation.Failure.UnfilteredUserInput",
+          "SQLInjection.PostgreSQLVectorStore",
+          "CodeExecution.UnicodeBypass",
+          "DoS.LongFilterChainParsing",
+          "AccessControl.Bypass.RLS"
+        ]
+      },
+      {
+        "name": "CommandInjection_interactive-git-checkout",
+        "language": "JavaScript",
+        "category": "Base",
+        "pattern": "interactive-git-checkout 包（≤1.1.4）存在命令注入漏洞。工具接收用户输入的 Git 分支名 `targetBranch` 后，使用 `child_process.exec()` 通过字符串拼接方式执行 `git checkout ${targetBranch}` 命令。`exec()` 会启动系统 Shell 解析整个命令字符串，而用户输入未做任何过滤或验证，允许包含 `;`、`&&`、`||` 等 Shell 特殊字符。攻击者可输入恶意分支名（如 `hello ; echo 'pwned' > /tmp/proof.txt; #`），注入任意系统命令以当前用户权限执行，导致信息泄露、文件篡改、恶意代码执行等严重后果。",
+        "vulnerability_id": "GHSA-4wcm-7hjf-6xw5",
+        "package": "interactive-git-checkout",
+        "affected_versions": "<=1.1.4",
+        "vuln_type": [
+          "Command Injection",
+          "OS Command Injection",
+          "Shell Injection",
+          "CWE-78"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-4wcm-7hjf-6xw5",
+        "symptoms": [
+          "使用 child_process.exec() 函数执行系统命令，而非更安全的 spawn()",
+          "用户输入的 targetBranch 未做任何过滤，允许包含 ;、&&、|| 等 Shell 特殊字符",
+          "命令构造采用字符串拼接，而非参数数组传递方式",
+          "无输入字符集白名单限制，仅依赖用户输入的合法性",
+          "工具以当前用户权限运行，无最小权限隔离机制",
+          "输入允许包含 Shell 特殊字符且无过滤",
+          "无官方修复版本"
+        ],
+        "related_exploit": [
+          "InputValidationError.UncheckedUserInput",
+          "CommandExecution.UnsafeStringConcatenation",
+          "ShellInjection.SpecialCharUnescaped",
+          "PrivilegeEscalation.ViaCommandInjection"
+        ]
+      },
+      {
+        "name": "NodeTarLinkPathInjection",
+        "language": "TypeScript",
+        "category": "Base",
+        "pattern": "node-tar ≤7.5.2 版本在处理硬链接（Link）和符号链接（SymbolicLink）的 `linkpath` 字段时存在路径清理缺陷。硬链接处理使用 `path.resolve(this.cwd, entry.linkpath)` 计算目标路径，未校验 `entry.linkpath` 是否为绝对路径，导致绝对路径直接忽略提取根目录（`this.cwd`），可创建指向系统任意文件的硬链接；符号链接处理直接将未验证的 `entry.linkpath` 传给 `fs.symlink`，未过滤绝对路径或路径遍历字符（如 `../`），导致符号链接注入。即使配置了默认安全选项 `preservePaths: false`，仍可通过硬链接绕过限制，实现任意文件覆盖和符号链接注入。",
+        "vulnerability_id": "CVE-2026-23745",
+        "package": "tar",
+        "affected_versions": "≤7.5.2",
+        "vuln_type": [
+          "Path Traversal",
+          "Arbitrary File Overwrite",
+          "Symlink Poisoning",
+          "CWE-22",
+          "CWE-59"
+        ],
+        "cve": "CVE-2026-23745",
+        "ghsa": "",
+        "symptoms": [
+          "项目使用 node-tar 版本 ≤7.5.2",
+          "恶意 TAR 包含绝对路径 linkpath 的硬链接，提取后可覆盖系统敏感文件（如 /etc/passwd）",
+          "恶意 TAR 包含绝对路径/路径遍历的符号链接，提取后可创建指向敏感路径的符号链接",
+          "核心代码中存在 `path.resolve(this.cwd, entry.linkpath)` 未校验绝对路径的逻辑",
+          "默认安全配置（preservePaths: false）下仍可通过硬链接覆盖提取根外的文件",
+          "重点关注 PathTraversal.ArbitraryFileOverwrite、SymlinkPoisoning 漏洞类型"
+        ],
+        "related_exploit": [
+          "PathTraversal.LinkPathUnsanitized",
+          "ArbitraryFileOverwrite.HardlinkBypass",
+          "SymlinkPoisoning.AbsolutePathInjection",
+          "InputValidationFlaw.LinkPathCleanupMissing",
+          "CI/CDRCE.FileOverwrite"
+        ]
+      },
+      {
+        "name": "PsiTransferZipSlipPathTraversal",
+        "language": "JavaScript",
+        "category": "Base",
+        "pattern": "PsiTransfer v2.3.0 在生成 TAR 归档文件时存在 Zip Slip 路径遍历漏洞。系统在处理用户上传的文件时，直接使用用户可控的 `metadata.name` 作为归档条目名称，未对路径遍历字符（如 `../`、`./`）进行任何净化处理。攻击者可构造包含 `../../../` 序列的恶意文件名，通过未授权上传接口（默认 `uploadPass` 为 `false`）上传恶意文件。当受害者下载并解压该 TAR 归档时，文件会被写入到攻击者指定的系统任意可写位置（如 `/tmp/evil.txt`、`~/.ssh/authorized_keys` 等），导致任意文件写入，进而可能实现远程代码执行、权限维持等攻击。",
+        "vulnerability_id": "GHSA-xphh-5v4r-r3rx",
+        "package": "psitransfer",
+        "affected_versions": "2.3.0",
+        "vuln_type": [
+          "Path Traversal",
+          "Zip Slip",
+          "Arbitrary File Write",
+          "CWE-22"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-xphh-5v4r-r3rx",
+        "symptoms": [
+          "用户上传文件的文件名支持包含 ../、./ 等路径分隔符",
+          "创建 TAR 归档条目时直接使用未处理的用户提交文件名",
+          "归档下载功能未校验文件名的路径合法性",
+          "默认配置下 uploadPass 为 false，无需授权即可上传文件",
+          "仅校验文件名元数据的存在性，未过滤 ../、/ 等路径分隔符",
+          "解压恶意归档后，文件会出现在受害者文件系统的非预期目录（如 /tmp/、用户主目录等）",
+          "重点关注 ZipSlip/PathTraversal 漏洞类型"
+        ],
+        "related_exploit": [
+          "InputValidationError.UnsanitizedFilename",
+          "PathTraversal.ZipSlip",
+          "AccessControlFlaw.UnauthorizedFileUpload",
+          "FileHandlingFlaw.ArchivePathInjection"
+        ]
+      },
+      {
+        "name": "FlowisePathTraversalFileRead",
+        "language": "TypeScript",
+        "category": "Base",
+        "pattern": "Flowise 3.0.5 版本存在任意文件读取漏洞，由参数校验缺失、路径验证缺陷和信息泄露组合而成。`streamStorageFile()` 函数中，`chatId` 参数无任何校验，可传入 `../../` 等路径遍历符；文件不存在时生成的 `fallbackPath` 未做根目录校验，可跳出存储目录；同时 `/api/v1/vector/upsert/` 接口的错误信息会泄露合法的 `chatflowId`。攻击者通过构造包含 `../.././` 的 `chatId`，调用 `/api/v1/get-upload-file` 或 `/api/v1/openai-assistants-file/download` 接口，可读取 `/root/.flowise/` 下的敏感文件（如 `database.sqlite`，包含 API 密钥等），fallback 逻辑的文件移动/删除还会破坏服务可用性。",
+        "vulnerability_id": "GHSA-99pg-hqvx-r4gf",
+        "package": "flowise",
+        "affected_versions": "3.0.5",
+        "vuln_type": [
+          "Path Traversal",
+          "Arbitrary File Read",
+          "Information Disclosure",
+          "CWE-22",
+          "CWE-200"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-99pg-hqvx-r4gf",
+        "symptoms": [
+          "chatflowId 做 UUID 校验+路径遍历字符过滤，fileName 做路径清洗",
+          "chatId 无任何校验，可传入 ../../ 等路径遍历符",
+          "fallbackPath 未做根目录校验，可跳出存储目录访问敏感文件",
+          "/api/v1/vector/upsert/ 接口错误信息泄露合法 chatflowId",
+          "未授权用户可读取 /root/.flowise/database.sqlite，获取 API 密钥等敏感数据",
+          "读取文件后原文件会被移动/删除，导致服务后续无法访问该文件",
+          "仅 Flowise 3.0.5 版本受影响"
+        ],
+        "related_exploit": [
+          "InputValidationError.UncheckedChatIdParameter",
+          "PathValidationFlaw.FallbackPathNoCheck",
+          "InformationDisclosure.ChatflowIdLeak",
+          "FileSystemAttack.ArbitraryFileRead"
+        ]
+      },
+      {
+        "name": "ShaJsInputValidationFailure",
+        "language": "TypeScript",
+        "category": "Base",
+        "pattern": "sha.js ≤2.4.11 版本的 `update()` 方法存在输入验证缺失漏洞。该方法未对输入数据类型进行校验，允许传入非 `Buffer`/`string` 类型的任意对象。攻击者可构造恶意对象，利用 `_normalizeInput()` 错误解析对象的 `length` 属性，操纵哈希内部状态：1）传入 `{ length: -N }` 可回滚之前的哈希状态，等效于删除部分输入数据的影响；2）传入 `{ length: '1e99' }` 可导致函数无限挂起，触发拒绝服务；3）构造特定对象可生成哈希碰撞，破坏数据完整性机制。该漏洞 CVSS 评分为 9.1（Critical），可导致哈希状态回滚、DoS、哈希碰撞，在依赖哈希的加密系统中可能进一步推导私钥。",
+        "vulnerability_id": "GHSA-95m3-7q98-8xr5",
+        "package": "sha.js",
+        "affected_versions": "≤2.4.11",
+        "vuln_type": [
+          "Input Validation Failure",
+          "Hash Manipulation",
+          "Denial of Service",
+          "Cryptographic Flaw",
+          "CWE-20"
+        ],
+        "cve": "CVE-2025-9288",
+        "ghsa": "GHSA-95m3-7q98-8xr5",
+        "symptoms": [
+          "update() 未校验输入类型，接受非 Buffer/string 类型的任意对象",
+          "传入 { length: -x } 可回滚哈希内部状态，篡改哈希计算结果",
+          "构造特定对象可生成哈希碰撞，不同数据对应相同哈希值",
+          "传入 { length: '1e99' } 导致函数无限挂起，触发 DoS",
+          "受影响版本 ≤2.4.11，未对输入的类型、长度做安全限制",
+          "重点关注 CWE-20（Improper Input Validation）漏洞类型"
+        ],
+        "related_exploit": [
+          "HashManipulation.StateRewind",
+          "HashCollision.ForcedCollision",
+          "DoS.ResourceExhaustion",
+          "CryptographicFailure.PrivateKeyExtraction"
+        ]
+      }
+    ],
+    "ConfigurationFlaw": [
+      {
+        "name": "pnpmGitDependencyScriptBypass",
+        "language": "TypeScript",
+        "category": "Base",
+        "pattern": "pnpm v10+ 引入的“默认禁用依赖生命周期脚本”安全功能（通过 onlyBuiltDependencies = [] 实现）存在范围漏洞：Git 托管的依赖在 fetch 阶段被单独处理，`preparePackage` 函数不仅忽略 `onlyBuiltDependencies` 限制，还显式移除 `ignore-scripts` 配置，导致 Git 依赖的 prepare/prepublish/prepack 脚本可在 `pnpm install` 时无提示执行，绕过安全策略",
+        "vulnerability_id": "GHSA-379q-355j-w6rj",
+        "package": "pnpm",
+        "affected_versions": ">=10.0.0 <10.6.0",
+        "vuln_type": [
+          "Security Control Bypass",
+          "Configuration Flaw",
+          "Supply Chain Vulnerability",
+          "Lifecycle Script Execution"
+        ],
+        "cve": "CVE-2025-69264",
+        "ghsa": "GHSA-379q-355j-w6rj",
+        "symptoms": [
+          "使用 pnpm v10+ 版本 (>=10.0.0 <10.6.0)",
+          "启用了 onlyBuiltDependencies 限制构建阶段脚本，但未覆盖 fetch 阶段",
+          "项目中依赖了 Git 托管的包（如 git+https://xxx）",
+          "Git 依赖的 prepare/prepublish/prepack 脚本在 install 时自动执行",
+          "用户无任何脚本执行的提示或确认步骤",
+          "重点关注 SecurityControlBypass.ScopeMismatchedRestriction 漏洞类型",
+          "可能会因为安全控制范围不完整，导致 Git 依赖绕过脚本禁用策略"
+        ],
+        "related_exploit": [
+          "SecurityControlBypass.ScopeMismatchedRestriction",
+          "SupplyChainAttack.LifecycleScriptExecution",
+          "ConfigurationFlaw.IgnoredSecurityOption",
+          "ExecutionFlaw.UnintendedScriptRun"
+        ]
+      },
+      {
+        "name": "OpencodeUnAuthRCE",
+        "language": "TypeScript",
+        "category": "Base",
+        "pattern": "opencode-ai 核心服务文件 server.ts 存在多重配置缺陷叠加导致的严重漏洞：1）服务启动时开启无身份验证的 HTTP 服务器，所有接口均可未授权访问；2）配置 `Access-Control-Allow-Origin: *` 的宽松 CORS 策略，允许任意网站跨域请求；3）注册 `/session/:id/shell`（命令执行）、`/pty`（交互式终端）、`/file/content`（文件读取）三个高危端点，均无输入过滤、路径校验和权限控制；4）`--mdns` 参数使服务绑定 `0.0.0.0` 全网段地址并通过 Bonjour 广播，将攻击范围扩大至整个本地网络。攻击者无需任何权限，即可通过本地进程或恶意网站跨域请求，以当前用户权限执行任意系统命令、读取任意文件，实现对目标设备的完全控制。",
+        "vulnerability_id": "GHSA-vxw4-wv6m-9hhh",
+        "package": "opencode-ai",
+        "affected_versions": "受影响版本（需确认具体版本范围）",
+        "vuln_type": [
+          "Authentication Bypass",
+          "CORS Misconfiguration",
+          "Remote Code Execution",
+          "Path Traversal",
+          "Configuration Flaw",
+          "CWE-306",
+          "CWE-942",
+          "CWE-22"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-vxw4-wv6m-9hhh",
+        "symptoms": [
+          "server.ts 基于 Hono 框架启动 HTTP 服务，默认监听 4096+ 端口",
+          "服务无任何身份验证、token 校验、权限控制逻辑",
+          "配置 Access-Control-Allow-Origin: * 允许所有跨域请求",
+          "注册 /session/:id/shell 路由直接执行用户传入的 shell 命令",
+          "注册 /pty 路由创建交互式 bash 终端，无访问限制",
+          "注册 /file/content 路由读取用户指定路径的文件，无路径校验",
+          "--mdns 参数使服务绑定 0.0.0.0 并广播，本地网络可访问",
+          "重点关注未认证端点暴露、CORS 配置错误、命令注入、路径遍历类漏洞"
+        ],
+        "related_exploit": [
+          "UnAuthAccess.RCEEndpointExposure",
+          "CORS.MisconfigurationWildcard",
+          "CommandInjection.UnfilteredInput",
+          "PathTraversal.UnrestrictedFileRead",
+          "WebServer.LocalNetworkExposure"
+        ]
+      },
+      {
+        "name": "PlaywrightInsecureSSLVerification",
+        "language": "TypeScript",
+        "category": "Base",
+        "pattern": "Playwright <1.55.1 版本的 Mac 平台浏览器重装脚本（如 reinstall_chrome_stable_mac.sh）存在安全配置缺陷。脚本中使用 `curl -k`（--insecure）选项下载浏览器安装包，主动禁用了 SSL 证书验证，导致无法验证下载服务器的身份真实性。攻击者可在公共 Wi-Fi、不可信网络中实施中间人攻击，拦截下载请求并替换为恶意 .pkg 安装包。脚本随后通过 `sudo installer` 以 root 权限安装该恶意包，使攻击者获得系统的完全控制权。该漏洞本质是加密验证机制被主动禁用，违反了安全配置的最佳实践。",
+        "vulnerability_id": "Playwright-SSL-Bypass",
+        "affected_versions": "<1.55.1",
+        "vuln_type": [
+          "SSL Verification Disabled",
+          "Man-in-the-Middle",
+          "Insecure Configuration",
+          "CWE-295",
+          "CWE-347"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "使用 Playwright <1.55.1 版本，且运行 Mac 平台的浏览器重装脚本（如 reinstall_chrome_stable_mac.sh）",
+          "脚本中包含 `curl -k` 命令下载 .pkg 格式安装包，并通过 `sudo installer` 特权安装",
+          "在公共 Wi-Fi、不可信网络环境中执行过该脚本",
+          "系统出现非预期进程、敏感数据泄露或被远程控制现象",
+          "关联 CWE-295（不当证书验证）和 CWE-347（加密签名验证不当）",
+          "CVSS v4 评分为 8.7（高危）"
+        ],
+        "related_exploit": [
+          "MitM.Attack.FileReplacement",
+          "CryptographicFailure.SSLVerificationDisabled",
+          "PrivilegedCodeExecution.MaliciousInstaller",
+          "InsecureNetwork.Download"
+        ]
+      }
+    ],
+    "LogicFlaw": [
+      {
+        "name": "AstroURLManipulation",
+        "language": "TypeScript",
+        "category": "Base",
+        "pattern": "Astro 框架服务端 `createRequest()` 函数在构建 URL 时，直接从请求头中读取 `x-forwarded-proto`、`x-forwarded-port` 等参数，未做任何合法性校验与净化，直接拼接生成 URL。攻击者可向这些请求头注入恶意 payload（如 `x:`、`?`、`//`、`https://evil.com?`），利用 WHATWG URL 解析规则篡改最终 URL 的协议、路径、主机等解析结果，导致中间件路由绕过、SSRF、CDN 缓存投毒、URL 污染等攻击。",
+        "vulnerability_id": "GHSA-hr2q-hp5q-x767",
+        "package": "astro",
+        "affected_versions": ">=2.16.0 <5.15.5",
+        "vuln_type": [
+          "URL Manipulation",
+          "Input Validation Flaw",
+          "Logic Flaw",
+          "Request Header Injection"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-hr2q-hp5q-x767",
+        "symptoms": [
+          "Astro 版本处于 >=2.16.0 且 <5.15.5 区间",
+          "框架启用按需渲染模式，非静态页面请求会触发 createRequest() 函数",
+          "应用通过中间件基于 context.url.pathname 做路由权限控制",
+          "服务器会复用 createRequest() 构建的 URL 发起外部网络请求",
+          "应用部署 CDN 服务，会缓存基于 URL 的响应结果",
+          "向 x-forwarded-proto 注入恶意 payload，可使 context.url.pathname 解析结果发生篡改",
+          "注入 javascript: 协议类 payload，可使页面生成含恶意脚本的 URL",
+          "重点关注 InputValidationFlaw.UnsanitizedUserControlledHeader 漏洞类型"
+        ],
+        "related_exploit": [
+          "AuthFlaw.MiddlewareRouteBypass",
+          "SSRF.CWE-918",
+          "DoS.CDNCachePoisoning",
+          "InputValidationFlaw.UnsanitizedHeaderInjection",
+          "WAFBypass.URLParsingAbuse"
+        ]
+      },
+      {
+        "name": "AxiosCacheInterceptorVaryBypass",
+        "language": "TypeScript",
+        "category": "Base",
+        "pattern": "axios-cache-interceptor <1.11.1 版本存在缓存键生成逻辑缺陷。缓存键仅基于 URL 生成，未处理上游响应中的 `Vary: Authorization` 头，且未将 `Authorization` 请求头纳入缓存键计算。在多用户认证场景下，高权限用户先请求某 URL 生成包含敏感数据的缓存后，低权限用户请求相同 URL 时直接复用该缓存，无需经过上游服务的授权校验。这导致低权限用户可以越权获取高权限用户的敏感数据，完全绕过了基于 Authorization 头的访问控制机制。",
+        "vulnerability_id": "GHSA-x4m5-4cw8-vc44",
+        "package": "axios-cache-interceptor",
+        "affected_versions": "<1.11.1",
+        "vuln_type": [
+          "Cache Poisoning",
+          "Authorization Bypass",
+          "Logic Flaw",
+          "CWE-524"
+        ],
+        "cve": "CVE-2025-69202",
+        "ghsa": "GHSA-x4m5-4cw8-vc44",
+        "symptoms": [
+          "使用 axios-cache-interceptor 版本 <1.11.1",
+          "缓存键仅由 URL 生成，忽略 Authorization 请求头",
+          "未解析上游响应的 Vary 头来调整缓存键生成逻辑",
+          "服务端多用户场景下，不同认证令牌的同 URL 请求返回相同缓存响应",
+          "低权限用户可获取高权限用户的缓存数据",
+          "重点关注 CachePoisoning/AuthorizationBypass 漏洞类型"
+        ],
+        "related_exploit": [
+          "CacheLogicError.UnprocessedVaryHeader",
+          "AuthorizationFlaw.CacheReuseBetweenUsers",
+          "DataLeakage.CrossUserCacheSharing",
+          "CachePoisoning.UrlOnlyCacheKey"
+        ]
+      },
+      {
+        "name": "FastifyMiddiePathBypass",
+        "language": "TypeScript",
+        "category": "Base",
+        "pattern": "@fastify/middie ≤9.0.3 版本存在中间件路径匹配逻辑缺陷。中间件注册时基于路径前缀（如 `/admin`）生成匹配正则，但匹配时使用**未解码的原始请求路径**（`req.url`）执行正则匹配，而底层 Fastify 路由系统会自动解码请求路径。攻击者可通过 URL 编码的路径（如 `/%61dmin` 替代 `/admin`）使中间件无法匹配而跳过，同时 Fastify 路由解码后能正常匹配路由处理函数，导致中间件的访问控制被完全绕过。该漏洞 CVSS 评分为 8.4（High），可导致受保护资源未授权访问。",
+        "vulnerability_id": "CVE-2026-22031",
+        "package": "@fastify/middie",
+        "affected_versions": "≤9.0.3",
+        "vuln_type": [
+          "Access Control Bypass",
+          "Path Matching Flaw",
+          "Logic Flaw",
+          "CWE-285"
+        ],
+        "cve": "CVE-2026-22031",
+        "ghsa": "",
+        "symptoms": [
+          "使用 @fastify/middie 版本 ≤9.0.3",
+          "通过 URL 编码的路径（如 /%61dmin）可访问受 /admin 中间件保护的端点",
+          "中间件注册逻辑使用 `fastify.use(pathPrefix, middleware)` 语法",
+          "核心代码中存在用 `req.url`（未解码）执行中间件路径正则匹配的逻辑",
+          "正常请求 /admin 被中间件拦截，但请求 /%61dmin 会返回受保护内容",
+          "修复版本中使用 Fastify 解码后的 `request.routerPath` 进行路径匹配"
+        ],
+        "related_exploit": [
+          "AccessControlBypass.URLHexEncoding",
+          "PathMatchingFlaw.UndecodedRequestPath",
+          "MiddlewareBypass.FastifyMiddie",
+          "InputValidationFlaw.URLDecodingMismatch"
+        ]
+      },
+      {
+        "name": "FlowiseAccountTakeover",
+        "language": "TypeScript",
+        "category": "Base",
+        "pattern": "FlowiseAI/Flowise 的 flowise-ui 包账户管理模块存在身份验证设计缺陷。平台将已登录状态作为邮箱、密码等核心凭证修改的唯一校验条件，未对邮箱修改增加原邮箱的确认或验证码验证步骤，也未对密码修改增加原密码校验步骤。邮箱作为平台登录标识和密码重置的唯一恢复渠道，无验证篡改后可彻底掌控账户恢复路径。二者叠加使仅获取基础登录权限的攻击者可直接篡改账户核心凭证，实现永久的账户接管。",
+        "vulnerability_id": "GHSA-x39m-3393-3qp4",
+        "package": "flowise-ui",
+        "affected_versions": "受影响版本（需确认具体版本范围）",
+        "vuln_type": [
+          "Authentication Bypass",
+          "Account Takeover",
+          "Logic Flaw",
+          "CWE-306",
+          "CWE-287"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-x39m-3393-3qp4",
+        "symptoms": [
+          "flowise-ui 的 /account 页面支持已登录状态下直接修改邮箱",
+          "密码修改功能仅需输入新密码，无需验证原密码",
+          "邮箱为平台登录标识及密码重置的唯一恢复渠道",
+          "仅需基础登录权限即可执行账户核心凭证修改操作",
+          "邮箱、密码修改后无额外校验，仅简单提示更新成功",
+          "篡改邮箱后，可通过平台密码重置功能完全掌控账户登录与恢复路径",
+          "重点关注 AuthFlaw.MissingSecondaryAuth 漏洞类型"
+        ],
+        "related_exploit": [
+          "AuthFlaw.MissingSecondaryAuth",
+          "AuthFlaw.UnverifiedCredentialChange",
+          "AccessControlFlaw.InsufficientAuthForCriticalOp"
+        ]
+      },
+      {
+        "name": "FastifyExpressPathBypass",
+        "language": "TypeScript",
+        "category": "Base",
+        "pattern": "@fastify/express ≤4.0.2 版本存在中间件路径匹配逻辑缺陷。中间件注册时基于路径前缀（如 `/admin`）进行拦截，但匹配时使用**未解码的原始请求路径**（`request.raw.url`）执行匹配，而底层 Fastify 路由系统会自动解码请求路径。攻击者可通过 URL 编码的路径（如 `/%61dmin` 替代 `/admin`）使中间件无法匹配而跳过，同时 Fastify 路由解码后能正常匹配路由处理函数，导致中间件的访问控制被完全绕过。该漏洞 CVSS 评分为 8.4（High），可导致受保护资源未授权访问。",
+        "vulnerability_id": "CVE-2026-22037",
+        "package": "@fastify/express",
+        "affected_versions": "≤4.0.2",
+        "vuln_type": [
+          "Access Control Bypass",
+          "Path Matching Flaw",
+          "Logic Flaw",
+          "CWE-285"
+        ],
+        "cve": "CVE-2026-22037",
+        "ghsa": "",
+        "symptoms": [
+          "使用 @fastify/express 版本 ≤4.0.2",
+          "通过 URL 编码的路径（如 /%61dmin）可访问受 /admin 中间件保护的端点",
+          "中间件注册逻辑使用 `fastify.use(pathPrefix, middleware)` 语法",
+          "核心代码中使用 `request.raw.url`（未解码）进行中间件路径匹配",
+          "正常请求 /admin 被中间件拦截，但请求 /%61dmin 会返回受保护内容",
+          "修复版本中使用 Fastify 解码后的 `request.routerPath` 进行路径匹配",
+          "重点关注 AccessControlBypass.URLEncoding 漏洞类型"
+        ],
+        "related_exploit": [
+          "AccessControlBypass.URLHexEncoding",
+          "PathMatchingFlaw.UndecodedRequestPath",
+          "MiddlewareBypass.FastifyExpressPlugin",
+          "InputValidationFlaw.URLDecodingMismatch"
+        ]
+      },
+      {
+        "name": "SignalKJwtStealViaUnauthWebSocketPoll",
+        "language": "TypeScript",
+        "category": "Base",
+        "pattern": "Signal K Server 存在两个可链式利用的未授权漏洞，组合后可实现 JWT 令牌窃取和认证绕过：1）当 `allow_readonly` 启用时，未认证用户可通过 WebSocket 连接 `serverEvents=all` 端点，获取服务器缓存的所有 `access_request` 事件，包含请求 ID、客户端标识、权限需求等关键信息；2）`/signalk/v1/access/requests/:id` 端点无需认证即可查询访问请求状态，当管理员批准请求后，响应会以明文返回已签发的 JWT 令牌。攻击者可通过 WebSocket 获取请求 ID，再通过状态端点轮询窃取令牌，无需任何前置认证即可实现权限劫持和认证绕过。",
+        "vulnerability_id": "GHSA-fq56-hvg6-wvm5",
+        "package": "signalk-server",
+        "affected_versions": "受影响版本（需确认具体版本范围）",
+        "vuln_type": [
+          "Authentication Bypass",
+          "JWT Theft",
+          "Information Disclosure",
+          "Logic Flaw",
+          "CWE-287",
+          "CWE-200"
+        ],
+        "cve": "CVE-2025-68620",
+        "ghsa": "GHSA-fq56-hvg6-wvm5",
+        "symptoms": [
+          "Signal K Server 启用 `allow_readonly` 配置（允许未认证用户只读访问）",
+          "WebSocket 端点 `serverEvents=all` 向未授权用户推送缓存的 `access_request` 事件",
+          "/signalk/v1/access/requests/:id` 端点无需认证即可查询请求状态及 JWT 令牌",
+          "`access_request` 事件包含完整的请求 ID 和权限详情，无权限过滤",
+          "攻击者可通过 WebSocket 获取请求 ID，再通过状态端点轮询窃取令牌",
+          "重点关注 AuthenticationBypass.UnauthEventLeak 漏洞类型"
+        ],
+        "related_exploit": [
+          "AuthenticationBypass.ChainVulnExploit",
+          "InformationDisclosure.UnauthWebSocketEvent",
+          "TokenStealing.JwtPolling",
+          "AccessControlFlaw.UnrestrictedStatusEndpoint",
+          "JwtStealing.UnauthPoll",
+          "WebSocketVuln.EventLeak"
+        ]
+      },
+      {
+        "name": "GraphQLModulesRaceCondition",
+        "language": "TypeScript",
+        "category": "Base",
+        "pattern": "graphql-modules 2.2.1≤v<2.4.1 和 3.0.0≤v<3.1.1 版本存在竞态条件漏洞。单例 Provider（`@Injectable({ scope: Scope.Singleton })`）通过 `@ExecutionContext()` 注入的请求上下文缺乏隔离机制，多个并行请求触发同一单例时，后请求会覆盖先请求的上下文，导致先请求在异步操作后读取到错误的上下文数据。漏洞 CVSS 评分为 8.7（High），核心影响数据完整性，上下文含认证/权限信息时可能引发越权，高并发场景下触发概率显著升高。",
+        "vulnerability_id": "CVE-2026-23735",
+        "package": "graphql-modules",
+        "affected_versions": ">=2.2.1 <2.4.1 || >=3.0.0 <3.1.1",
+        "vuln_type": [
+          "Race Condition",
+          "Concurrency Flaw",
+          "Data Integrity",
+          "Logic Flaw",
+          "CWE-362"
+        ],
+        "cve": "CVE-2026-23735",
+        "ghsa": "GHSA-53wg-r69p-v3r7",
+        "symptoms": [
+          "项目使用 graphql-modules 版本为 2.2.1≤v<2.4.1 或 3.0.0≤v<3.1.1",
+          "存在单例 Provider（@Injectable({ scope: Scope.Singleton })）且通过 @ExecutionContext() 注入上下文",
+          "并行请求同一接口时，出现请求上下文数据串用（如用户标识混淆）",
+          "运行文档 PoC 脚本后，第一个请求的 after 字段返回 \"second\"，与预期 \"first\" 不符",
+          "漏洞触发需同时满足：单例 Provider + @ExecutionContext() 注入 + 并行请求",
+          "上下文混淆会导致业务数据错乱（如订单归属错误）或权限校验失效",
+          "重点关注 RaceCondition.ContextConfusion、DataIntegrity.SingletonSharedState 漏洞类型"
+        ],
+        "related_exploit": [
+          "RaceCondition.ParallelRequestContext",
+          "DataIntegrity.SingletonContextOverwrite",
+          "ResourceSharing.FailedIsolation",
+          "LogicFlaw.UnprotectedCriticalSection"
+        ]
+      },
+      {
+        "name": "DatabaseServerReadOnlyBypass",
+        "language": "TypeScript",
+        "category": "Base",
+        "pattern": "@executeautomation/database-server <=1.1.0 版本的 `read_query` 工具存在访问控制逻辑缺陷。该工具意图通过只读模式限制仅允许 SELECT 查询，但仅通过简单的 SQL 语句前缀 `startsWith(\"SELECT\")` 进行校验。攻击者可构造以 SELECT 开头但包含危险操作的 SQL 语句：1）调用数据库系统函数（如 PostgreSQL 的 `pg_terminate_backend`、`pg_sleep`）引发 DoS；2）利用 pg 驱动支持的多查询特性，在 SELECT 后拼接其他 DML/DDL 语句；3）调用具有副作用的存储过程。这些操作完全绕过只读限制，导致数据库服务中断、敏感信息泄露或数据篡改。该漏洞本质是依赖客户端输入校验而非数据库级权限隔离的访问控制设计缺陷。",
+        "vulnerability_id": "GHSA-65hm-pwj5-73pw",
+        "package": "@executeautomation/database-server",
+        "affected_versions": "<=1.1.0",
+        "vuln_type": [
+          "Access Control Bypass",
+          "Logic Flaw",
+          "Authorization Bypass",
+          "CWE-284"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-65hm-pwj5-73pw",
+        "symptoms": [
+          "使用 @executeautomation/database-server <=1.1.0 版本，且启用 `read_query` 工具执行数据库操作",
+          "连接 PostgreSQL 等支持系统函数调用的数据库",
+          "SQL 语句以 `SELECT` 开头，但包含 `pg_terminate_backend`、`pg_sleep` 等系统函数或存储过程",
+          "支持多查询（以 `;` 分隔多个 SQL 语句），可在 SELECT 后拼接其他操作",
+          "数据库出现进程被终止、查询延迟、敏感信息泄露等异常",
+          "关联 CWE-284（不当访问控制）",
+          "CVSS v3.1 评分为 8.1（高危）"
+        ],
+        "related_exploit": [
+          "AccessControl.Bypass.PrefixCheck",
+          "SQL.Injection.SystemFunctionCall",
+          "DoS.DatabaseFunctionAbuse",
+          "InformationDisclosure.QueryMonitoring"
+        ]
+      }
+    ],
+    "ResourceManagementFlaw ": [
+      {
+        "name": "SerovalStackOverflowDoS",
+        "language": "TypeScript",
+        "category": "Base",
+        "pattern": "seroval ≤1.4.0 版本在序列化极端深度的嵌套对象时，未设置递归深度限制。攻击者可构造数千层嵌套的对象（如 `{a:{b:{c:...}}}`），调用 `seroval.serialize()` 时，递归调用栈持续增长，超出 JavaScript 引擎的最大调用栈限制（通常 1000-10000 层），触发 `RangeError: Maximum call stack size exceeded` 错误，导致应用崩溃，造成拒绝服务（DoS）。修复版本（1.4.1）新增 `depthLimit` 参数，超限则主动抛错，阻断栈溢出路径。",
+        "vulnerability_id": "CVE-2026-24006",
+        "package": "seroval",
+        "affected_versions": "≤1.4.0",
+        "vuln_type": [
+          "Denial of Service",
+          "Stack Overflow",
+          "Resource Exhaustion",
+          "CWE-674",
+          "CWE-400"
+        ],
+        "cve": "CVE-2026-24006",
+        "ghsa": "",
+        "symptoms": [
+          "项目使用 seroval 版本 ≤1.4.0",
+          "序列化深层嵌套对象（层级≥1000）时，抛出 'Maximum call stack size exceeded' 错误",
+          "核心序列化函数无 depthLimit 配置项",
+          "应用无响应、进程退出",
+          "修复版本中出现 depthLimit 参数及深度计数器逻辑",
+          "重点关注 ResourceExhaustion.StackOverflow 漏洞类型"
+        ],
+        "related_exploit": [
+          "DoS.SerializationUnboundedDepth",
+          "ResourceExhaustion.RecursionStackOverflow",
+          "LogicFlaw.MissingDepthLimit",
+          "PerformanceHazard.NestedDataProcessing"
+        ]
+      },
+      {
+        "name": "SignalKUncontrolledMemoryConsumption",
+        "language": "TypeScript",
+        "category": "Base",
+        "pattern": "SignalK Server <2.19.0 版本存在无限制内存消耗漏洞。服务器对无需认证的公共端点 `/signalk/v1/access/requests` 使用无界 JavaScript 对象存储所有请求数据，未设置存储数量/大小上限；未配置请求速率限制和请求体大小限制；清理旧请求的 `pruneRequests` 函数默认每15分钟执行一次，且仅清理超过24小时的请求，清理效率远低于攻击者发送请求的速度。攻击者可通过发送大量含大体积 payload 的 POST 请求，持续将数据写入内存，耗尽 Node.js 堆内存，导致服务器进程崩溃，引发拒绝服务。",
+        "vulnerability_id": "GHSA-7rqc-ff8m-7j23",
+        "package": "signalk-server",
+        "affected_versions": "<2.19.0",
+        "vuln_type": [
+          "Denial of Service",
+          "Memory Exhaustion",
+          "Resource Exhaustion",
+          "CWE-400",
+          "CWE-770"
+        ],
+        "cve": "CVE-2025-68272",
+        "ghsa": "GHSA-7rqc-ff8m-7j23",
+        "symptoms": [
+          "无需认证即可访问 /signalk/v1/access/requests 端点",
+          "使用简单 JS 对象存储所有请求数据，无数量/大小上限",
+          "pruneRequests 清理函数默认15分钟执行一次，效率极低",
+          "未配置请求速率限制和请求体大小限制",
+          "攻击触发后，服务器会出现 Node.js 堆内存持续增长，最终触发 'FATAL ERROR: Ineffective mark-compacts near heap limit Allocation failed' 错误",
+          "进程崩溃后，SignalK Server 完全不可用，需手动重启才能恢复",
+          "重点关注 CWE-400（不受控资源消耗）、CWE-770（无限制资源分配）漏洞类型"
+        ],
+        "related_exploit": [
+          "ResourceConsumption.UnboundedMemoryStorage",
+          "DoS.JavaScriptHeapOutOfMemory",
+          "AccessControl.NoRateLimitingForPublicEndpoint",
+          "CleanupMechanism.InefficientPruneInterval"
+        ]
+      },
+      {
+        "name": "QSArrayLimitBypassDoS",
+        "language": "TypeScript",
+        "category": "Base",
+        "pattern": "qs 库 <6.14.1 版本存在 arrayLimit 绕过导致的内存耗尽漏洞。qs 设计 `arrayLimit` 选项（默认值20）用于限制解析后数组的最大长度，防止内存溢出。该限制仅对索引表示法（如 `a[0]=x`）的数组生效，处理括号表示法（如 `a[]=x`）的数组时，代码未使用已计算的 `currentArrayLength` 验证是否超过 `arrayLimit`，直接无限制合并数组元素。攻击者可构造包含大量括号表示法数组参数的 HTTP 请求（如重复 `a[]=x` 10万次），使 qs 解析出超大数组，耗尽服务器内存，触发 Node.js 堆内存溢出错误，导致进程崩溃，实现拒绝服务。",
+        "vulnerability_id": "GHSA-6rw7-vpxm-498p",
+        "package": "qs",
+        "affected_versions": "<6.14.1",
+        "vuln_type": [
+          "Denial of Service",
+          "Memory Exhaustion",
+          "Resource Exhaustion",
+          "Input Validation Flaw",
+          "CWE-400",
+          "CWE-20"
+        ],
+        "cve": "CVE-2025-15284",
+        "ghsa": "GHSA-6rw7-vpxm-498p",
+        "symptoms": [
+          "qs 库版本 < 6.14.1，使用默认或自定义 arrayLimit 限制数组长度",
+          "处理括号表示法（a[]=x）的数组参数时，未检查 currentArrayLength 是否超过 arrayLimit",
+          "已计算 currentArrayLength 但未在括号表示法处理逻辑中使用",
+          "攻击者发送含大量 a[]=x 的请求后，服务器 Node.js 进程内存占用快速增长",
+          "最终触发 'FATAL ERROR: Ineffective mark-compacts near heap limit Allocation failed' 错误，进程崩溃",
+          "攻击无需认证，仅需发送 HTTP 请求，门槛极低，单个恶意请求即可引发 DoS",
+          "重点关注 CWE-20（不当输入验证）漏洞类型"
+        ],
+        "related_exploit": [
+          "InputValidationError.ArrayLimitBypass",
+          "DoS.UnboundedArrayGrowth",
+          "SecurityOption.IneffectiveLimitEnforcement",
+          "ResourceConsumption.JavaScriptHeapOutOfMemory"
+        ]
+      },
+      {
+        "name": "ValibotReDoS",
+        "language": "TypeScript",
+        "category": "Base",
+        "pattern": "valibot 库 >=0.31.0 且 <1.2.0 版本存在正则表达式拒绝服务（ReDoS）漏洞。emoji 验证功能使用的 `EMOJI_REGEX` 正则表达式中，`\\p{Emoji_Presentation}` 与国旗区域指示符号 `[\\u{1F1E6}-\\u{1F1FF}]`、`\\p{Emoji_Modifier_Base}` 等字符类存在重叠，导致正则引擎解析时产生歧义。当输入“几乎匹配但最终失败”的字符串（如重复 49 次国旗符号后拼接非匹配字符 `0`）时，引擎会探索指数级数量的匹配路径，匹配时间随输入长度呈指数增长。长度不足 100 字符的恶意输入即可使正则引擎陷入长时间计算（作者机器上约 2 分钟），CPU 占用率飙升，阻塞 Node.js 事件循环，造成拒绝服务。",
+        "vulnerability_id": "GHSA-vqpr-j7v3-hqw9",
+        "package": "valibot",
+        "affected_versions": ">=0.31.0 <1.2.0",
+        "vuln_type": [
+          "Denial of Service",
+          "ReDoS",
+          "Resource Exhaustion",
+          "CWE-1333",
+          "CWE-400"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-vqpr-j7v3-hqw9",
+        "symptoms": [
+          "使用 valibot 的 v.emoji() 进行字符串验证",
+          "依赖 EMOJI_REGEX 正则表达式实现 emoji 匹配逻辑",
+          "处理用户输入时出现 CPU 占用过高、响应超时",
+          "短输入（<100字符）即可触发长时间正则匹配",
+          "valibot 版本处于 >=0.31.0 且 <1.2.0 区间",
+          "存在输入长度限制（如 maxLength(100)）但仍触发响应超时",
+          "恶意输入格式为重复国旗区域指示符号（如 \\u{1F1E6}）后拼接非匹配字符（如 0）"
+        ],
+        "related_exploit": [
+          "RegexVulnerability.CatastrophicBacktracking",
+          "DoS.RegexDenialOfService",
+          "InputValidation.UnsafeRegexUsage"
+        ]
+      },
+      {
+        "name": "HPKEConcurrencyNonceReuse",
+        "language": "TypeScript",
+        "category": "Base",
+        "pattern": "@hpke/core ≤1.7.4 版本的 `SenderContext.Seal()` API 存在并发竞态条件漏洞。`SenderContext` 内部使用私有序列号 `_seq` 生成 AEAD nonce，但该序列号未做并发安全保护。当多个 `Seal()` 调用并发执行时，会同时读取到相同的 `_seq` 值，生成完全相同的 AEAD nonce，之后才执行递增操作。AEAD 算法要求 nonce 必须全局唯一，nonce 重复直接导致加密的机密性和完整性完全丧失。攻击者可利用此漏洞破解加密消息或篡改密文。修复版本（1.7.5）中对序列号的读写增加了并发锁/原子操作，保证每次 `Seal()` 调用使用唯一的序列号。",
+        "vulnerability_id": "GHSA-73g8-5h73-26h4",
+        "package": "@hpke/core",
+        "affected_versions": "≤1.7.4",
+        "vuln_type": [
+          "Concurrency Race Condition",
+          "Cryptographic Flaw",
+          "Nonce Reuse",
+          "Logic Flaw",
+          "CWE-362"
+        ],
+        "cve": "",
+        "ghsa": "GHSA-73g8-5h73-26h4",
+        "symptoms": [
+          "SenderContext 用于执行 HPKE 协议的发送方加密操作",
+          "Seal() 调用依赖序列号生成 AEAD nonce，且序列号未做并发安全保护",
+          "并发调用 Seal() 会生成相同的 nonce，导致解密异常或加密内容可被破解",
+          "AEAD 算法要求 nonce 全局唯一，nonce 复用会丢失消息机密性和完整性",
+          "重置接收方序列号后可解密原本失败的消息，证明 nonce 存在重复生成的情况",
+          "重点关注 ConcurrencyRaceCondition 漏洞类型"
+        ],
+        "related_exploit": [
+          "CryptoLogicFlaw.NonceReuseInAEAD",
+          "ConcurrencyFlaw.RaceConditionInSequenceNumber",
+          "SecurityLogicFlaw.ImproperNonceGeneration",
+          "CryptoFlaw.AEADConfidentialityLoss"
+        ]
+      }
+    ],
+    "OtherLanguageVulns": [
+      {
+        "name": "Java_LDAPInjection",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "外部输入未经校验直接拼接进 LDAP 查询过滤条件并执行，导致攻击者可构造恶意LDAP语法改变查询逻辑",
+        "vulnerability_id": "CWE90_LDAP_Injection",
+        "package": "javax.naming.directory",
+        "affected_versions": "All versions using JNDI without proper escaping",
+        "vuln_type": [
+          "LDAP注入",
+          "认证绕过",
+          "信息泄露"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "输入来源包括环境变量、文件、Properties配置、系统属性、TCP连接或HTTP请求参数",
+          "LDAP查询过滤器通过字符串拼接方式构造，如 `\"(cn=\" + data + \")\"`",
+          "调用 `DirContext.search()` 执行查询时使用拼接后的字符串作为过滤条件",
+          "未对输入进行LDAP语法转义或白名单校验",
+          "未对特殊LDAP元字符（如 `*`, `(`, `)`, `|`, `&`, `!`）进行转义处理",
+          "数据通过抽象方法在类之间传播（如 Juliet 测试套件的 81_variant 模式）",
+          "使用 `InitialDirContext` 或 `InitialLdapContext` 建立连接时未启用连接池或安全认证",
+          "未使用 `encodeForLDAP` 等安全编码函数处理用户输入"
+        ],
+        "related_exploit": [
+          "LDAPInjection.AuthenticationBypass",
+          "LDAPInjection.DirectoryEnumeration",
+          "LDAPInjection.SensitiveDataExposure",
+          "AuthenticationBypass.LDAPFilterInjection",
+          "InformationDisclosure.LDAPWildcardInjection",
+          "InputValidationFlaw.UnescapedLDAPMetaCharacters"
+        ]
+      },
+      {
+        "name": "Java_XPathInjection",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "外部输入未经校验直接拼接进 XPath 查询表达式并执行，导致攻击者可构造恶意 XPath 语法改变查询逻辑",
+        "vulnerability_id": "CWE643_Xpath_Injection",
+        "package": "javax.xml.xpath",
+        "affected_versions": "All versions using JNDI without proper escaping",
+        "vuln_type": [
+          "XPath注入",
+          "认证绕过",
+          "信息泄露"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "输入来源包括环境变量、Properties文件、系统属性、数据库、TCP连接、URLConnection或控制台输入",
+          "XPath查询表达式通过字符串拼接方式构造，如 `//users/user[name/text()='\" + username + \"' and pass/text()='\" + password + \"']`",
+          "调用 `XPath.evaluate()` 执行查询时使用拼接后的字符串作为表达式",
+          "未对输入进行 XPath 语法转义或白名单校验",
+          "未对 XPath 元字符（如 `'`, `\"`, `]`, `[`, `or`, `and` 等）进行转义处理",
+          "数据通过抽象方法在类之间传播（如 Juliet 测试套件的 81_variant 模式）",
+          "用户名和密码等字段直接拼接进 XPath 查询字符串",
+          "使用 `XPath.evaluate()` 执行查询时未进行参数化处理"
+        ],
+        "related_exploit": [
+          "XPathInjection.AuthenticationBypass",
+          "XPathInjection.NodeEnumeration",
+          "XPathInjection.SensitiveDataDisclosure",
+          "AuthenticationBypass.XPathInjection",
+          "XMLNodeEnumeration",
+          "SensitiveInformationDisclosure",
+          "InputValidationFlaw.UnescapedXPathMetaCharacters"
+        ]
+      },
+      {
+        "name": "Java_XSS",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "攻击者可控输入未经上下文安全编码直接写入 HTML 响应，导致恶意脚本在浏览器中执行",
+        "vulnerability_id": "CWE80_XSS",
+        "package": "javax.servlet.http.HttpServletResponse",
+        "affected_versions": "All versions using Servlet API without proper output encoding",
+        "vuln_type": [
+          "跨站脚本",
+          "XSS",
+          "CWE-182伪过滤"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "输入来源包括文件、Properties配置、数据库、TCP连接或HTTP请求参数",
+          "用户输入被直接拼接进 HTML 响应内容",
+          "使用 `HttpServletResponse.getWriter().println()` 输出数据",
+          "未进行 HTML 实体编码（如 `<` `>` `'` `\"` `&`）",
+          "或仅使用不完整的字符串替换进行所谓“过滤”（CWE-182）",
+          "试图通过 `replaceAll(\"(<script>)\", \"\")` 移除 `<script>` 标签，但可被变形 payload 绕过",
+          "数据通过抽象方法在类之间传播（81_variant）"
+        ],
+        "related_exploit": [
+          "XSS.SessionHijacking",
+          "XSS.CookieStealing",
+          "XSS.ArbitraryScriptExecution",
+          "ReflectedXSS",
+          "StoredXSS",
+          "ClientSideCodeExecution"
+        ]
+      },
+      {
+        "name": "Java_XSS_ErrorMessage",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "外部可控输入未经 HTML 编码直接拼接进错误响应消息并通过 sendError() 返回客户端，导致错误页面 XSS",
+        "vulnerability_id": "CWE81_XSS_Error_Message",
+        "package": "javax.servlet.http.HttpServletResponse",
+        "affected_versions": "All versions using Servlet API without proper output encoding in error handling",
+        "vuln_type": [
+          "跨站脚本",
+          "XSS",
+          "错误页面XSS"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "错误消息中包含来自外部的数据",
+          "使用 `HttpServletResponse.sendError()` 返回错误信息",
+          "错误信息内容未进行 HTML 编码",
+          "输入来源包括文件、Properties文件、数据库或TCP连接",
+          "数据通过抽象方法在类之间传播（81_variant）",
+          "触发点位于错误处理路径（Error Handling Path）",
+          "未使用 `StringEscapeUtils.escapeHtml4()` 等编码手段"
+        ],
+        "related_exploit": [
+          "ReflectedXSS.ErrorPage",
+          "ClientSideScriptExecution",
+          "SessionHijacking",
+          "PhishingViaErrorPage"
+        ]
+      },
+      {
+        "name": "Java_XSS_Attribute",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "外部可控输入未经校验直接拼接进 HTML 标签属性（如 src、href）并输出，导致属性上下文 XSS",
+        "vulnerability_id": "CWE83_XSS_Attribute",
+        "package": "javax.servlet.http.HttpServletResponse",
+        "affected_versions": "All versions using Servlet API without proper HTML attribute encoding",
+        "vuln_type": [
+          "跨站脚本",
+          "XSS",
+          "属性注入XSS"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "输入来源包括文件、Properties 文件、TCP 连接、URL 查询字符串等",
+          "外部输入被拼接进 HTML 属性（如 src、href、value）",
+          "通过 `println()` 将拼接后的 HTML 返回给客户端",
+          "未对属性上下文进行编码或白名单校验",
+          "未处理属性分隔符（如 `\"`、`'`、空格）",
+          "数据通过抽象方法在类之间传播（81_variant）",
+          "攻击者可注入新属性或事件处理器（如 onerror、onmouseover）"
+        ],
+        "related_exploit": [
+          "XSS.AttributeInjection",
+          "XSS.EventHandlerInjection",
+          "XSS.JavaScriptSchemeInjection",
+          "AttributeInjection",
+          "EventHandlerInjection",
+          "JavaScriptSchemeExecution"
+        ]
+      },
+      {
+        "name": "Java_OpenRedirect",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "外部可控输入未经可信性校验直接作为跳转目标传入 sendRedirect()，导致开放重定向",
+        "vulnerability_id": "CWE601_Open_Redirect",
+        "package": "javax.servlet.http.HttpServletResponse",
+        "affected_versions": "All versions using Servlet API without redirect target validation",
+        "vuln_type": [
+          "开放重定向",
+          "逻辑漏洞",
+          "钓鱼攻击"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "跳转 URL 来源于文件、Properties 文件、URLConnection 或 URL 查询字符串",
+          "未校验跳转目标是否属于受信任域名或白名单",
+          "直接调用 `sendRedirect()` 进行跳转",
+          "仅进行 URI 语法合法性校验（如 `new URI(data)`），未验证安全语义",
+          "数据通过抽象方法在类之间传播（81_variant）",
+          "未限制为站内相对路径或受信任域名列表"
+        ],
+        "related_exploit": [
+          "PhishingAttack",
+          "CredentialHarvesting",
+          "SocialEngineering",
+          "Phishing",
+          "CredentialTheft",
+          "UserTrustAbuse"
+        ]
+      },
+      {
+        "name": "Java_PathTraversal",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "外部可控输入未经路径规范化直接拼接进文件系统路径并访问，导致相对路径遍历",
+        "vulnerability_id": "CWE23_Relative_Path_Traversal",
+        "package": "java.io.File",
+        "affected_versions": "All versions using Java I/O without path canonicalization",
+        "vuln_type": [
+          "路径遍历",
+          "文件读取",
+          "信息泄露"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "文件路径的一部分来源于外部可控输入（环境变量、文件、Properties、HTTP参数、TCP连接）",
+          "使用字符串拼接方式构造文件路径，如 `new File(root + data)`",
+          "未进行路径规范化（如 `getCanonicalPath()`）或目录边界校验",
+          "未阻止路径跳转符（如 `../`、`..\\`）影响最终访问路径",
+          "使用 `File` / `FileInputStream` 等接口直接访问文件",
+          "数据通过抽象方法在类之间传播（81_variant）"
+        ],
+        "related_exploit": [
+          "ArbitraryFileRead",
+          "SensitiveFileDisclosure",
+          "ConfigurationLeakage",
+          "SensitiveInformationDisclosure"
+        ]
+      },
+      {
+        "name": "Java_AbsolutePathTraversal",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "外部可控输入被直接作为绝对路径构造 File 对象并访问文件系统，导致任意文件读取",
+        "vulnerability_id": "CWE36_Absolute_Path_Traversal",
+        "package": "java.io.File",
+        "affected_versions": "All versions using Java I/O without path validation",
+        "vuln_type": [
+          "绝对路径遍历",
+          "文件读取",
+          "信息泄露"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "文件路径完全来源于外部可控输入（环境变量、文件、Properties、HTTP参数、TCP连接）",
+          "直接使用 `new File(data)` 将外部输入作为完整文件路径",
+          "未进行路径规范化（如 `getCanonicalPath()`）或目录边界校验",
+          "允许使用绝对路径访问文件系统（如 `/etc/passwd`、`C:\\Windows\\win.ini`）",
+          "使用 `File` / `FileInputStream` 等接口直接访问文件",
+          "数据通过抽象方法在类之间传播（81_variant）"
+        ],
+        "related_exploit": [
+          "ArbitraryFileRead",
+          "SensitiveFileDisclosure",
+          "SystemFileAccess",
+          "ConfigurationLeakage"
+        ]
+      },
+      {
+        "name": "Java_TempFileInsecurePerms",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "创建临时文件后未显式设置访问权限，导致文件继承系统默认权限，可能被同主机其他用户访问",
+        "vulnerability_id": "CWE378_Temporary_File_Creation_With_Insecure_Perms",
+        "package": "java.io.File",
+        "affected_versions": "All versions using Java I/O without explicit permission setting",
+        "vuln_type": [
+          "临时文件",
+          "权限配置",
+          "信息泄露"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "使用 `File.createTempFile()` 创建临时文件",
+          "未调用 `setReadable()`、`setWritable()`、`setExecutable()` 显式设置权限",
+          "临时文件权限继承系统默认配置（如 umask）",
+          "在多用户系统（Linux/Unix）或共享环境下，文件可能对其他用户可读/可写",
+          "临时文件在生命周期内可被非预期用户访问",
+          "未遵循最小权限原则"
+        ],
+        "related_exploit": [
+          "SensitiveInformationDisclosure",
+          "TemporaryFileContentTampering",
+          "LocalFileAccess",
+          "PrivilegeEscalationViaTempData"
+        ]
+      },
+      {
+        "name": "Java_ResourceLeak",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "获取系统资源（流、文件句柄、数据库连接）后未在使用完成后显式释放，导致资源泄露",
+        "vulnerability_id": "CWE772_Missing_Release_of_Resource",
+        "package": "java.io",
+        "affected_versions": "All versions without proper resource cleanup",
+        "vuln_type": [
+          "资源泄露",
+          "拒绝服务",
+          "资源管理"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "创建输入输出流（如 `InputStreamReader`、`BufferedReader`）后未调用 `close()`",
+          "数据库连接、Statement 或 ResultSet 使用后未释放",
+          "缺少 `finally` 块或未使用 try-with-resources 确保资源关闭",
+          "异常路径下资源无法被释放",
+          "资源在方法返回后仍然占用系统文件描述符或连接池资源",
+          "随着程序运行，未释放的资源不断累积，最终耗尽系统资源"
+        ],
+        "related_exploit": [
+          "ResourceLeak",
+          "DenialOfService",
+          "ResourceExhaustion",
+          "SystemInstability"
+        ]
+      },
+      {
+        "name": "Java_ImproperShutdown",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "资源释放逻辑未放入 finally 或等价的必然执行结构中，异常路径下资源无法释放导致泄露",
+        "vulnerability_id": "CWE404_Improper_Resource_Shutdown",
+        "package": "java.io",
+        "affected_versions": "All versions without proper exception-safe resource cleanup",
+        "vuln_type": [
+          "资源泄露",
+          "拒绝服务",
+          "异常路径泄露"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "`close()` / `unlock()` 写在 try 块内部，而非 finally 块中",
+          "资源在 try 块中创建并使用，但释放逻辑依赖正常执行流程",
+          "异常发生时资源释放代码被跳过，导致文件句柄、数据库连接或锁长期占用",
+          "缺少 finally 块或未使用 try-with-resources 确保资源释放",
+          "重复触发异常路径后，未释放的资源不断累积",
+          "最终导致资源耗尽、死锁或服务不可用"
+        ],
+        "related_exploit": [
+          "ResourceLeak",
+          "DenialOfService",
+          "ResourceExhaustion",
+          "Deadlock",
+          "ExceptionPathLeak"
+        ]
+      },
+      {
+        "name": "Java_InfoLeakError",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "异常处理时直接输出完整异常堆栈信息（printStackTrace()），导致系统内部实现细节泄露",
+        "vulnerability_id": "CWE209_Information_Leak_Error",
+        "package": "java.lang.Throwable",
+        "affected_versions": "All versions with improper exception handling",
+        "vuln_type": [
+          "信息泄露",
+          "异常堆栈泄露",
+          "系统指纹"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "catch 块中直接调用 `printStackTrace()` 输出异常",
+          "异常堆栈被输出到控制台或 HTTP 响应",
+          "错误信息包含类名、方法名、包路径和代码行号",
+          "异常可能由外部请求或业务输入触发",
+          "未对异常信息进行脱敏、裁剪或统一错误处理",
+          "攻击者可通过触发异常获取系统内部实现细节"
+        ],
+        "related_exploit": [
+          "InformationDisclosure",
+          "SystemFingerprinting",
+          "AttackSurfaceExpansion",
+          "SystemStructureInference",
+          "TargetedExploitPreparation"
+        ]
+      },
+      {
+        "name": "Java_ServerLogLeak",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "将会话标识符（Session ID）等敏感信息直接写入服务器日志文件，导致会话劫持风险",
+        "vulnerability_id": "CWE533_Info_Exposure_Server_Log",
+        "package": "javax.servlet.http.HttpSession",
+        "affected_versions": "All versions with improper session ID logging",
+        "vuln_type": [
+          "信息泄露",
+          "会话泄露",
+          "日志泄露"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "从 `HttpServletRequest` 中读取用户输入参数",
+          "调用 `request.getSession()` 获取会话对象",
+          "将 `session.getId()` 拼接进日志内容",
+          "使用 `log()` 输出到服务器日志文件",
+          "日志中包含可用于会话劫持的敏感信息",
+          "未对日志内容进行敏感信息脱敏处理",
+          "默认信任服务器日志不会被攻击者访问"
+        ],
+        "related_exploit": [
+          "SessionHijacking",
+          "InformationDisclosure",
+          "PrivilegeEscalation",
+          "AccountTakeover"
+        ]
+      },
+      {
+        "name": "Java_QueryStringLeak",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "使用 HTTP GET 方法提交包含敏感字段（用户名、密码）的表单，导致凭据暴露在 URL 查询字符串中",
+        "vulnerability_id": "CWE598_Information_Exposure_QueryString",
+        "package": "javax.servlet.http.HttpServletResponse",
+        "affected_versions": "All versions with GET method forms containing sensitive fields",
+        "vuln_type": [
+          "信息泄露",
+          "凭据泄露",
+          "查询字符串泄露"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "HTML 表单 method 设置为 `get`",
+          "表单中包含 `password`、`token`、`secret` 等敏感字段",
+          "表单数据被拼接进 URL 查询字符串",
+          "URL 可能被浏览器历史、Web 服务器日志、代理服务器或 Referer 头记录",
+          "敏感信息在传输层面缺乏最小暴露原则",
+          "未采用 POST 等更安全的提交方式"
+        ],
+        "related_exploit": [
+          "CredentialDisclosure",
+          "InformationLeakage",
+          "AccountCompromise",
+          "SessionHijacking",
+          "AccountTakeover"
+        ]
+      },
+      {
+        "name": "Java_EnvVarLeak",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "将系统环境变量（如 PATH、JAVA_HOME）直接输出到用户可见通道（HTTP响应/控制台），导致服务器运行环境信息泄露",
+        "vulnerability_id": "CWE526_Info_Exposure_Environment_Variables",
+        "package": "java.lang.System",
+        "affected_versions": "All versions with direct exposure of environment variables",
+        "vuln_type": [
+          "信息泄露",
+          "环境变量泄露",
+          "系统指纹"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "使用 `System.getenv()` 读取系统环境变量",
+          "将环境变量内容直接输出到 HTTP 响应或控制台",
+          "泄露 PATH、JAVA_HOME、USER、PWD 等系统运行信息",
+          "未对输出内容进行脱敏或访问控制",
+          "常见于调试、错误处理或诊断接口中",
+          "攻击者可获取服务器路径结构、运行环境等敏感信息"
+        ],
+        "related_exploit": [
+          "SystemInformationDisclosure",
+          "EnvironmentFingerprinting",
+          "AttackSurfaceExpansion",
+          "SystemReconnaissance",
+          "ChainedAttackPreparation"
+        ]
+      },
+      {
+        "name": "Java_PlaintextPassword",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "从外部存储读取密码并以明文形式直接用于安全敏感操作（如数据库连接），未进行任何加密或解密处理",
+        "vulnerability_id": "CWE256",
+        "package": "java.sql.DriverManager",
+        "affected_versions": "所有版本",
+        "vuln_type": [
+          "Plaintext Storage of Password",
+          "Credential Management",
+          "Sensitive Data Exposure"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "密码从 Properties 文件或普通文件中读取",
+          "密码未进行加密或解密处理",
+          "直接作为凭据用于数据库连接",
+          "数据通过抽象方法在类之间传递（81_variant）",
+          "密码在内存中以明文形式存在",
+          "使用 DriverManager.getConnection() 直接传入明文密码"
+        ],
+        "related_exploit": [
+          "CredentialDisclosure",
+          "DatabaseUnauthorizedAccess",
+          "LateralMovement",
+          "PrivilegeEscalation"
+        ]
+      },
+      {
+        "name": "Java_HardCodedPassword",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "将硬编码或不安全来源的字符串作为认证凭据直接用于安全敏感操作（如数据库连接），未使用安全的凭据存储机制",
+        "vulnerability_id": "CWE259",
+        "package": "java.sql.DriverManager",
+        "affected_versions": "所有版本",
+        "vuln_type": [
+          "Hard Coded Password",
+          "Credential Management",
+          "Sensitive Data Exposure",
+          "Authentication Bypass"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "密码以明文字符串形式存在于代码中",
+          "硬编码凭据被直接用于数据库或认证接口",
+          "未使用安全的凭据存储机制（如环境变量或密钥管理服务）",
+          "数据通过抽象方法在类之间传播（81_variant）",
+          "源码或字节码泄露即可获取有效密码",
+          "使用 DriverManager.getConnection() 直接传入硬编码密码"
+        ],
+        "related_exploit": [
+          "AuthenticationBypass",
+          "CredentialReuse",
+          "UnauthorizedDatabaseAccess",
+          "DatabaseCompromise",
+          "LongTermCredentialLeakage"
+        ]
+      },
+      {
+        "name": "Java_PlaintextCookie",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "将敏感认证数据（如用户名、密码、Token）未经任何加密或哈希处理，直接以明文形式存储到Cookie中",
+        "vulnerability_id": "CWE315",
+        "package": "javax.servlet.http.HttpServletResponse",
+        "affected_versions": "所有版本",
+        "vuln_type": [
+          "Plaintext Storage in Cookie",
+          "Sensitive Data Exposure",
+          "Session Management Flaw",
+          "Credential Disclosure"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "Cookie中直接存储用户名、密码或认证凭据",
+          "未对数据进行哈希或加密处理",
+          "使用 response.addCookie() 写入敏感信息",
+          "未设置 HttpOnly 或 Secure 等保护属性",
+          "数据通过抽象方法在类之间传播（81_variant）",
+          "Cookie内容可直接还原出凭据",
+          "认证信息暴露于客户端"
+        ],
+        "related_exploit": [
+          "SessionHijacking",
+          "CredentialDisclosure",
+          "AuthenticationBypass",
+          "CredentialReuse",
+          "UnauthorizedAccess"
+        ]
+      },
+      {
+        "name": "Java_CleartextTxSensitiveInfo",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "敏感信息（如密码、认证凭据、会话密钥）通过未加密的网络通道（普通Socket、非HTTPS连接）直接传输，未使用SSL/TLS等加密机制",
+        "vulnerability_id": "CWE319",
+        "package": "java.net.Socket",
+        "affected_versions": "所有版本",
+        "vuln_type": [
+          "Cleartext Transmission of Sensitive Information",
+          "Man-in-the-Middle Vulnerability",
+          "Network Security Flaw",
+          "Credential Sniffing"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "密码或凭据通过普通Socket / TCP连接传输",
+          "使用非SSL/TLS的URLConnection获取或发送敏感数据",
+          "未对网络层传输的数据进行加密",
+          "敏感数据直接被用于认证或安全关键操作",
+          "数据通过抽象方法在类之间传播（81_variant）",
+          "使用Socket而非SSLSocket建立连接",
+          "使用HTTP而非HTTPS传输敏感信息"
+        ],
+        "related_exploit": [
+          "ManInTheMiddle",
+          "CredentialSniffing",
+          "AccountTakeover",
+          "CredentialDisclosure",
+          "PrivilegeEscalation"
+        ]
+      },
+      {
+        "name": "Java_HardCodedCryptoKey",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "加密密钥以硬编码字符串常量形式存在于代码中，并直接用于密码学操作（如SecretKeySpec初始化），未使用安全的密钥生成与存储机制",
+        "vulnerability_id": "CWE321",
+        "package": "javax.crypto.spec.SecretKeySpec",
+        "affected_versions": "所有版本",
+        "vuln_type": [
+          "Hard Coded Cryptographic Key",
+          "Cryptographic Key Disclosure",
+          "Sensitive Data Exposure",
+          "Encryption Bypass"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "加密密钥被写死在代码中或由硬编码值传递",
+          "使用 SecretKeySpec 将字符串直接作为密钥",
+          "未从安全存储或安全随机源生成密钥",
+          "密钥通过抽象方法在类之间传播（81_variant）",
+          "攻击者可通过反编译或内存分析恢复密钥",
+          "使用固定字符串初始化加密算法（AES、DES等）",
+          "密钥以字符串常量形式存在于代码中"
+        ],
+        "related_exploit": [
+          "CryptographicKeyDisclosure",
+          "EncryptedDataRecovery",
+          "SecurityBypass",
+          "KeyExtraction",
+          "EncryptedDataDisclosure",
+          "CryptoBypass"
+        ]
+      },
+      {
+        "name": "Java_UnprotectedCredTransport",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "用户凭证（用户名、密码）通过非SSL加密的HTTP连接传输，表单action使用http://协议而非https://，导致凭证在网络中明文暴露",
+        "vulnerability_id": "CWE523",
+        "package": "javax.servlet.http.HttpServletResponse",
+        "affected_versions": "所有版本",
+        "vuln_type": [
+          "Unprotected Transport of Credentials",
+          "Man-in-the-Middle Vulnerability",
+          "Network Security Flaw",
+          "Credential Sniffing"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "表单 action 使用 http 协议而非 https",
+          "用户名和密码等认证信息直接通过网络明文传输",
+          "浏览器端可控输入直接提交到服务端",
+          "无加密保护，易受中间人攻击",
+          "登录页面通过HTTP提供服务",
+          "认证请求未使用SSL/TLS加密"
+        ],
+        "related_exploit": [
+          "NetworkSniffing.CredentialsTheft",
+          "ManInTheMiddle.AuthenticationBypass",
+          "NetworkSniffing",
+          "ManInTheMiddle",
+          "AuthenticationBypass"
+        ]
+      },
+      {
+        "name": "Java_PersistentCookieInfoExposure",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "将敏感信息写入持久化Cookie并设置长期有效时间（如多年），导致敏感数据长期存储在客户端磁盘中，增加被窃取风险",
+        "vulnerability_id": "CWE539",
+        "package": "javax.servlet.http.Cookie",
+        "affected_versions": "所有版本",
+        "vuln_type": [
+          "Information Exposure Through Persistent Cookie",
+          "Client-Side Storage Vulnerability",
+          "Session Management Flaw",
+          "Cookie Security Issue"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "创建包含敏感信息的Cookie",
+          "调用 cookie.setMaxAge() 并设置为正数（长期有效）",
+          "Cookie未设置为会话级（Session Cookie）",
+          "敏感数据存储在客户端而非服务器",
+          "Cookie有效期设置过长（如数年）",
+          "即使浏览器关闭，Cookie仍保存在客户端磁盘中"
+        ],
+        "related_exploit": [
+          "ClientSideCookieTheft",
+          "PersistentAuthenticationLeak",
+          "LocalFileSystemDisclosure",
+          "CookieTheft",
+          "AuthenticationTokenDisclosure",
+          "SessionHijacking"
+        ]
+      },
+      {
+        "name": "Java_InsufficientSessionExpiration",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "将HttpSession设置为永不过期（setMaxInactiveInterval(-1)），导致会话标识符长期有效，即使用户长时间不活动仍可继续使用，增加会话劫持风险",
+        "vulnerability_id": "CWE613",
+        "package": "javax.servlet.http.HttpSession",
+        "affected_versions": "所有版本",
+        "vuln_type": [
+          "Insufficient Session Expiration",
+          "Session Management Flaw",
+          "Authentication Logic Defect",
+          "Session Hijacking Risk"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "调用 HttpSession.setMaxInactiveInterval(-1)",
+          "未设置合理的会话过期时间",
+          "Session 在用户长时间不活动后仍然有效",
+          "未实施绝对超时控制机制",
+          "Session 生命周期无限延长",
+          "缺乏非活动超时机制"
+        ],
+        "related_exploit": [
+          "SessionHijacking",
+          "SessionFixation",
+          "PrivilegePersistence",
+          "SessionReplay",
+          "PrivilegeAbuse"
+        ]
+      },
+      {
+        "name": "Java_SensitiveCookieWithoutSecure",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "创建包含敏感信息的Cookie（如Session ID、认证令牌）后，未调用cookie.setSecure(true)设置Secure属性，导致Cookie可能在HTTP明文连接中被传输，易被网络监听者截获",
+        "vulnerability_id": "CWE614",
+        "package": "javax.servlet.http.Cookie",
+        "affected_versions": "所有版本",
+        "vuln_type": [
+          "Sensitive Cookie Without Secure Flag",
+          "Cookie Security Misconfiguration",
+          "Session Management Flaw",
+          "HTTPS Bypass Risk"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "使用 new Cookie() 创建敏感 Cookie",
+          "未调用 cookie.setSecure(true)",
+          "直接调用 response.addCookie(cookie)",
+          "仅通过 request.isSecure() 判断但未强制 Secure 标志",
+          "Cookie 在 HTTPS 场景下创建，但未设置 Secure 属性",
+          "浏览器在后续 HTTP 请求中仍可能发送该 Cookie"
+        ],
+        "related_exploit": [
+          "SessionHijacking",
+          "CookieSniffing",
+          "ManInTheMiddle",
+          "CookieInterception",
+          "TrafficSniffing"
+        ]
+      },
+      {
+        "name": "Java_ResourceExhaustion",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "外部可控输入（环境变量、Properties文件、URLConnection等）未经边界校验直接用于资源密集型操作（如for循环次数、文件写入次数、Thread.sleep()时间），导致CPU、磁盘或线程资源被大量占用，引发拒绝服务",
+        "vulnerability_id": "CWE400",
+        "package": "java.lang.System",
+        "affected_versions": "所有版本",
+        "vuln_type": [
+          "Resource Exhaustion",
+          "Denial of Service",
+          "CPU Exhaustion",
+          "I/O Exhaustion",
+          "Thread Blocking"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "count 来源于环境变量、Properties 文件、系统属性、文件或 URLConnection",
+          "count 直接作为 for 循环上界使用",
+          "count 直接用于文件写入次数或 Thread.sleep()",
+          "未对 count 进行最大值、最小值或合理区间校验",
+          "数据通过抽象方法在类之间传播（81_variant）",
+          "外部输入被直接信任，未限制资源使用规模",
+          "攻击者可通过构造超大数值触发资源耗尽"
+        ],
+        "related_exploit": [
+          "ResourceExhaustion.CPU_DoS",
+          "ResourceExhaustion.IO_DoS",
+          "ResourceExhaustion.Thread_Blocking",
+          "DenialOfService",
+          "CPUExhaustion",
+          "IOExhaustion"
+        ]
+      },
+      {
+        "name": "Java_UncheckedLoopCondition",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "外部可控输入（环境变量、文件、Properties文件、系统属性等）未经上限校验直接作为for/while循环条件，循环体内可能包含I/O等高成本操作，导致CPU、磁盘或日志资源被大量占用，引发拒绝服务",
+        "vulnerability_id": "CWE606",
+        "package": "java.lang.System",
+        "affected_versions": "所有版本",
+        "vuln_type": [
+          "Unchecked Loop Condition",
+          "Resource Exhaustion",
+          "Denial of Service",
+          "CPU Exhaustion",
+          "Log Flooding"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "循环次数来源于环境变量、文件、Properties 文件或系统属性",
+          "仅进行 Integer.parseInt 转换，未限制最大值",
+          "循环中包含 IO 操作（如 IO.writeLine）",
+          "循环变量通过抽象方法在子类中使用（81_variant）",
+          "未对 numberOfLoops 进行上限校验",
+          "直接用于 for (i < numberOfLoops) 循环条件",
+          "循环体内执行 I/O 操作，放大资源消耗风险"
+        ],
+        "related_exploit": [
+          "DenialOfService",
+          "ResourceExhaustion",
+          "LogFlooding",
+          "ResourceExhaustion.CPU_DoS",
+          "ResourceExhaustion.IO_DoS"
+        ]
+      },
+      {
+        "name": "Java_UncontrolledRecursion",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "递归函数缺乏有效的终止条件或合理的递归深度限制，递归深度依赖不受控的输入参数（如Long.MAX_VALUE），导致递归调用次数异常增长，最终引发StackOverflowError栈溢出和拒绝服务",
+        "vulnerability_id": "CWE674",
+        "package": "java.lang.StackOverflowError",
+        "affected_versions": "所有版本",
+        "vuln_type": [
+          "Uncontrolled Recursion",
+          "Stack Overflow",
+          "Denial of Service",
+          "Resource Exhaustion"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "递归函数未设置基准终止条件或条件不合理",
+          "递归深度依赖不受控的输入值",
+          "递归调用次数可能极大",
+          "可能导致 StackOverflowError 或拒绝服务",
+          "递归深度未设置合理上限",
+          "递归调用自身形成Sink",
+          "未对递归层数进行防御性控制"
+        ],
+        "related_exploit": [
+          "StackOverflow",
+          "DenialOfService",
+          "ResourceExhaustion.StackOverflow",
+          "ProgramCrash"
+        ]
+      },
+      {
+        "name": "Java_InfiniteLoop",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "循环结构中缺乏有效的终止条件或循环条件永远满足（如while(true)），且循环体中缺少break、return或异常中断机制，导致循环持续执行，最终引发CPU占用过高、程序假死或拒绝服务",
+        "vulnerability_id": "CWE835",
+        "package": "java.lang.Thread",
+        "affected_versions": "所有版本",
+        "vuln_type": [
+          "Infinite Loop",
+          "Denial of Service",
+          "High CPU Consumption",
+          "Resource Exhaustion"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "循环条件恒为真或递增逻辑导致条件永不满足",
+          "循环体中没有 break、return 或异常中断",
+          "程序可能进入无限循环状态",
+          "CPU 占用率异常升高，服务假死",
+          "循环体中可能包含IO操作，放大资源消耗",
+          "循环条件缺乏终止逻辑或永远成立",
+          "未对循环次数进行限制或检测"
+        ],
+        "related_exploit": [
+          "DenialOfService",
+          "HighCPUConsumption",
+          "ResourceExhaustion.CPU_DoS",
+          "ServiceFreeze"
+        ]
+      },
+      {
+        "name": "Java_UseBrokenCrypto",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "使用已知弱加密算法（DES、3DES、RC4）加密敏感数据，密钥长度不足（DES=56位，3DES=112位），无法抵抗暴力破解和密码分析攻击，导致密文易被破解，敏感数据泄露",
+        "vulnerability_id": "CWE327",
+        "package": "javax.crypto.Cipher",
+        "affected_versions": "所有版本",
+        "vuln_type": [
+          "Use of Broken Crypto Algorithm",
+          "Weak Encryption",
+          "Sensitive Data Exposure",
+          "Cryptographic Flaw"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "使用 KeyGenerator.getInstance(\"DES\") 或 KeyGenerator.getInstance(\"DESede\")",
+          "Cipher.getInstance(\"DES\") 或 Cipher.getInstance(\"DESede\")",
+          "明文数据直接使用弱算法加密",
+          "未使用 AES 或更安全的加密方式",
+          "密钥长度低于推荐标准（DES=56位，3DES=112位）",
+          "使用 RC4 等已知弱流密码",
+          "加密算法易受暴力破解或密码分析"
+        ],
+        "related_exploit": [
+          "BruteForceAttack",
+          "Cryptanalysis",
+          "SensitiveDataDisclosure",
+          "KeyRecovery",
+          "EncryptedDataDecryption"
+        ]
+      },
+      {
+        "name": "Java_ReversibleOneWayHash",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "使用不安全或可逆的哈希算法（MD2、MD5、SHA1）进行数据摘要，未加盐或未采用SHA-256/SHA-512等安全哈希算法，导致哈希值易受彩虹表攻击、碰撞攻击或暴力破解，敏感信息可被恢复",
+        "vulnerability_id": "CWE328",
+        "package": "java.security.MessageDigest",
+        "affected_versions": "所有版本",
+        "vuln_type": [
+          "Reversible One-Way Hash",
+          "Weak Hash Algorithm",
+          "Sensitive Data Exposure",
+          "Cryptographic Flaw"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "使用 MD2、MD5、SHA1 等已知不安全哈希算法",
+          "硬编码输入或敏感信息进行哈希",
+          "哈希值直接用于存储或验证",
+          "未加盐或未采用安全哈希算法",
+          "哈希结果用于密码存储或完整性校验",
+          "算法易受彩虹表或碰撞攻击"
+        ],
+        "related_exploit": [
+          "RainbowTableAttack",
+          "CollisionAttack",
+          "PasswordCracking",
+          "HashReversal",
+          "AuthenticationBypass"
+        ]
+      },
+      {
+        "name": "Java_MissingCryptoStep",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "使用密码学API时遗漏必要的初始化或关键步骤，如KeyGenerator未调用init()指定密钥长度、MessageDigest未调用update()传入数据，导致密钥长度由底层Provider默认决定，可能生成低于安全要求的密钥，或在不同运行环境中产生不一致结果",
+        "vulnerability_id": "CWE325",
+        "package": "javax.crypto.KeyGenerator",
+        "affected_versions": "所有版本",
+        "vuln_type": [
+          "Missing Required Cryptographic Step",
+          "Cryptographic API Misuse",
+          "Weak Key Generation",
+          "Provider-Dependent Behavior"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "使用 KeyGenerator 但未调用 init() 指定密钥长度",
+          "使用 MessageDigest 但未调用 update() 传入数据",
+          "依赖密码学 Provider 的默认行为",
+          "代码逻辑表面正确但实际安全性不足",
+          "密钥长度在不同环境中可能不一致",
+          "可能生成低于安全要求的密钥（如128位而非256位）",
+          "加密或摘要强度下降，影响安全性和兼容性"
+        ],
+        "related_exploit": [
+          "WeakKeyGeneration",
+          "InsecureCryptographicConfiguration",
+          "DigestOfEmptyInput",
+          "ProviderDependentBehavior",
+          "CryptographicMisuse"
+        ]
+      },
+      {
+        "name": "Java_NotUsingRandomIVWithCBCMode",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "在CBC模式下使用对称加密算法（如AES/CBC/PKCS5Padding）时，初始化向量（IV）被硬编码为固定值（如全0字节数组），未使用SecureRandom生成随机且不可预测的IV，导致相同明文在相同密钥下产生可预测的密文模式，破坏CBC模式的语义安全性，易受密文模式分析、选择明文攻击和重放攻击",
+        "vulnerability_id": "CWE329",
+        "package": "javax.crypto.spec.IvParameterSpec",
+        "affected_versions": "所有版本",
+        "vuln_type": [
+          "Not Using Random IV with CBC Mode",
+          "Cryptographic Misconfiguration",
+          "CBC Mode Vulnerability",
+          "IV Reuse"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "初始化向量以字节数组形式硬编码",
+          "多个加密操作复用相同 IV",
+          "使用 AES/CBC/PKCS5Padding 等 CBC 模式",
+          "IV 未通过 SecureRandom 生成",
+          "相同明文在相同密钥下产生可预测的密文模式",
+          "IV 被硬编码为全0或其他固定值",
+          "CBC 模式的语义安全性被破坏"
+        ],
+        "related_exploit": [
+          "CBCPatternLeakage",
+          "ChosenPlaintextAttack",
+          "ReplayAttack",
+          "CiphertextPatternAnalysis",
+          "CryptographicWeakness"
+        ]
+      },
+      {
+        "name": "Java_SameSeedInPRNG",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "使用固定或可预测的种子（Seed）初始化伪随机数生成器（PRNG），显式调用SecureRandom.setSeed()传入硬编码字节数组，覆盖内部熵源，导致随机序列完全由种子决定，攻击者可复现相同随机序列，预测Session ID、Token、验证码、Nonce或密钥等安全随机值",
+        "vulnerability_id": "CWE336",
+        "package": "java.security.SecureRandom",
+        "affected_versions": "所有版本",
+        "vuln_type": [
+          "Same Seed in PRNG",
+          "Predictable Random Sequence",
+          "Cryptographic Weakness",
+          "Random Number Generator Misuse"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "使用 SecureRandom 但显式调用 setSeed()",
+          "Seed 为硬编码常量或固定字节数组",
+          "随机数生成结果在多次运行中保持一致",
+          "随机值被直接输出或用于程序逻辑",
+          "Seed 通过抽象方法在类之间传播（81_variant）",
+          "随机序列完全由 Seed 决定",
+          "显式调用 setSeed() 覆盖内部熵源"
+        ],
+        "related_exploit": [
+          "PredictableRandomSequence",
+          "SessionTokenPrediction",
+          "CryptographicWeakness",
+          "PredictableTokenGeneration",
+          "SessionHijacking",
+          "CryptographicFailure"
+        ]
+      },
+      {
+        "name": "Java_WeakPRNG",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "在安全敏感场景（如会话ID、令牌、验证码、密钥材料）中使用非密码学安全的伪随机数生成器，包括Math.random()和java.util.Random，这些PRNG基于可预测的线性同余算法，攻击者可通过少量输出样本推测内部状态，预测后续随机值，导致认证绕过、会话劫持或令牌伪造",
+        "vulnerability_id": "CWE338",
+        "package": "java.lang.Math",
+        "affected_versions": "所有版本",
+        "vuln_type": [
+          "Use of Cryptographically Weak PRNG",
+          "Predictable Random Number Generator",
+          "Cryptographic Misconfiguration",
+          "Insecure Randomness"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "使用 Math.random() 生成随机数",
+          "使用 java.util.Random 生成随机数",
+          "随机值被直接输出或用于后续逻辑",
+          "未使用 java.security.SecureRandom",
+          "代码存在多种控制流变体（01 / 02）",
+          "随机数用于安全敏感场景",
+          "PRNG基于线性同余或可预测算法",
+          "攻击者可通过少量输出推测后续随机值"
+        ],
+        "related_exploit": [
+          "PredictableTokenGeneration",
+          "SessionHijacking",
+          "AuthenticationBypass",
+          "TokenPrediction",
+          "SessionFixation"
+        ]
+      },
+      {
+        "name": "Java_UnsaltedOneWayHash",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "使用单向哈希算法（如SHA-512）对密码或敏感数据进行哈希时，未添加随机盐值（Salt），导致相同输入产生相同输出，易受彩虹表攻击、字典攻击和预计算哈希链攻击，攻击者可快速恢复原始密码或敏感数据",
+        "vulnerability_id": "CWE759",
+        "package": "java.security.MessageDigest",
+        "affected_versions": "所有版本",
+        "vuln_type": [
+          "Unsalted One-Way Hash",
+          "Password Storage Misconfiguration",
+          "Cryptographic Flaw",
+          "Credential Exposure"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "使用 MessageDigest.getInstance(\"SHA-512\") 等哈希算法",
+          "直接调用 digest() 对原始数据进行哈希",
+          "未调用 hash.update() 添加随机盐",
+          "未使用 SecureRandom 生成随机盐值",
+          "相同输入始终产生相同输出",
+          "哈希结果可被预计算攻击利用",
+          "密码存储未遵循加盐原则"
+        ],
+        "related_exploit": [
+          "RainbowTableAttack",
+          "DictionaryAttack",
+          "PasswordCracking",
+          "OfflineBruteForce",
+          "CredentialRecovery"
+        ]
+      },
+      {
+        "name": "Java_PredictableSaltOneWayHash",
+        "language": "Java",
+        "category": "Base",
+        "pattern": "使用单向哈希算法（如SHA-512）对密码或敏感数据进行加盐哈希时，盐值来源于可预测的伪随机数生成器java.util.Random，而非密码学安全的SecureRandom。由于Random的种子可被枚举或推测，攻击者可重现盐值并进行离线暴力破解，使加盐机制失效",
+        "vulnerability_id": "CWE760",
+        "package": "java.util.Random",
+        "affected_versions": "所有版本",
+        "vuln_type": [
+          "Predictable Salt One-Way Hash",
+          "Password Storage Misconfiguration",
+          "Cryptographic Flaw",
+          "Credential Exposure"
+        ],
+        "cve": "",
+        "ghsa": "",
+        "symptoms": [
+          "使用 java.util.Random 生成盐值",
+          "调用 hash.update() 添加盐",
+          "未使用 SecureRandom",
+          "最终调用 MessageDigest.digest() 生成哈希",
+          "盐值可被预测或复现",
+          "Random基于线性同余算法，种子可枚举",
+          "加盐机制因盐值可预测而失效"
+        ],
+        "related_exploit": [
+          "OfflineBruteForce",
+          "PredictableSaltReproduction",
+          "CredentialRecovery",
+          "OfflinePasswordCracking",
+          "SaltReproductionAttack",
+          "CredentialDisclosure"
+        ]
+      }
+    ]
+  }
+}

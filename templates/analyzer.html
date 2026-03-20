@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Node.js Security Analysis · Professional Edition</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
+  
+  <!-- Bootstrap -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+  
+  <!-- Code Highlighting -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github.min.css">
+  
+  <!-- D3.js -->
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  
+  <!-- Common Styles -->
+  <link rel="stylesheet" href="static/css/style.css">
+  
+  <!-- Analyzer Specific Styles -->
+  <style>
+    .analysis-section {
+      margin-bottom: 1.5rem;
+      background: white;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--gray-200);
+      overflow: hidden;
+    }
+    
+    .collapsible-section {
+      cursor: pointer;
+      padding: 16px 20px;
+      background: white;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      transition: background 0.2s;
+    }
+    
+    .collapsible-section:hover {
+      background: var(--gray-50);
+    }
+    
+    .collapsible-section h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 0;
+      flex: 1;
+    }
+    
+    .collapsible-section i {
+      color: var(--primary);
+      font-size: 20px;
+    }
+    
+    .badge {
+      padding: 4px 8px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    
+    .collapsible-content {
+      display: none;
+      padding: 20px;
+      border-top: 1px solid var(--gray-200);
+      background: var(--gray-50);
+    }
+    
+    .upload-card {
+      background: white;
+      border-radius: var(--radius-lg);
+      padding: 32px;
+      margin-bottom: 24px;
+      border: 2px dashed var(--gray-300);
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .upload-card:hover {
+      border-color: var(--primary);
+      background: var(--gray-50);
+    }
+    
+    pre {
+      background: white;
+      padding: 16px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--gray-200);
+      overflow-x: auto;
+    }
+    
+    .graph-container {
+      height: 100%;
+      min-height: 400px;
+      background: white;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--gray-200);
+      overflow: hidden;
+      position: relative;
+    }
+    
+    .graph-svg-container {
+      width: 100%;
+      height: 100%;
+    }
+    
+    .zoom-controls {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: white;
+      border-radius: var(--radius-md);
+      padding: 4px;
+      box-shadow: var(--shadow-md);
+      z-index: 10;
+    }
+    
+    .legend {
+      position: absolute;
+      bottom: 10px;
+      right: 10px;
+      background: white;
+      border-radius: var(--radius-md);
+      padding: 10px;
+      box-shadow: var(--shadow-md);
+      z-index: 10;
+    }
+    
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+      font-size: 12px;
+    }
+    
+    .legend-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+    
+    .node circle {
+      stroke: #2d3748;
+      stroke-width: 1.5;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+    }
+    
+    .node text {
+      font-size: 10px;
+      font-weight: 500;
+    }
+    
+    .link {
+      stroke: #94a3b8;
+      stroke-width: 1.5;
+    }
+    
+    .tooltip {
+      position: absolute;
+      background: white;
+      border-radius: var(--radius-md);
+      padding: 8px 12px;
+      box-shadow: var(--shadow-lg);
+      border: 1px solid var(--gray-200);
+      pointer-events: none;
+      font-size: 12px;
+      z-index: 1000;
+    }
+
+    .debug-info {
+      background-color: #f8f9fa;
+      border: 1px solid #e9ecef;
+      border-radius: 4px;
+      padding: 10px;
+      margin-top: 10px;
+      font-family: monospace;
+      font-size: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <!-- ========== Sidebar ========== -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="logo-wrapper">
+          <div class="logo-icon"><i class="bi bi-shield-check"></i></div>
+          <span class="logo-text">Node.js Security Analysis</span>
+        </div>
+      </div>
+      
+      <div class="sidebar-toggle" id="sidebarToggle">
+        <i class="bi bi-chevron-left" id="toggleIcon"></i>
+      </div>
+      
+      <div class="sidebar-nav">
+        <div class="nav-section">
+          <div class="nav-section-title">Analysis</div>
+          <a href="dashboard" class="nav-item">
+            <i class="bi bi-house"></i><span>Dashboard</span>
+          </a>
+          <a href="analyzer" class="nav-item active">
+            <i class="bi bi-file-code"></i><span>Code Analysis</span>
+          </a>
+          <a href="#" class="nav-item">
+            <i class="bi bi-diagram-3"></i><span>Dependency Graph</span>
+          </a>
+          <a href="#" class="nav-item">
+            <i class="bi bi-bug"></i><span>Vulnerability Scan</span>
+          </a>
+        </div>
+        
+        <div class="nav-section">
+          <div class="nav-section-title">Management</div>
+          <a href="#" class="nav-item">
+            <i class="bi bi-database"></i><span>Knowledge Base</span>
+          </a>
+          <a href="#" class="nav-item">
+            <i class="bi bi-file-text"></i><span>Reports</span>
+          </a>
+          <a href="#" class="nav-item">
+            <i class="bi bi-gear"></i><span>Settings</span>
+          </a>
+        </div>
+      </div>
+      
+      <div class="recent-section">
+        <div class="nav-section-title">Recent</div>
+        <div class="recent-item"><i class="bi bi-file-earmark"></i><span>app.js</span></div>
+        <div class="recent-item"><i class="bi bi-file-earmark"></i><span>token.sol</span></div>
+        <div class="recent-item"><i class="bi bi-file-earmark"></i><span>router.js</span></div>
+      </div>
+      
+      <div class="sidebar-footer">
+        <div class="user-info">
+          <div class="avatar">JS</div>
+          <div class="user-details">
+            <div class="user-name">John Smith</div>
+            <div class="user-role">Security Analyst</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+    
+    <!-- ========== Main Content Area ========== -->
+    <main class="main-content">
+      <header class="top-nav">
+        <div class="nav-left">
+          <button class="btn btn-link d-md-none"><i class="bi bi-list"></i></button>
+          <span class="page-title">Node.js Security Analysis</span>
+        </div>
+        
+        <div class="search-wrapper">
+          <i class="bi bi-search search-icon"></i>
+          <input type="text" class="search-input" placeholder="Search files, vulnerabilities, reports...">
+          <span class="search-kbd">⌘K</span>
+        </div>
+        
+        <div class="nav-right">
+          <button class="notification-btn">
+            <i class="bi bi-bell"></i>
+            <span class="notification-badge"></span>
+          </button>
+          
+          <div class="user-menu" data-bs-toggle="dropdown">
+            <div class="user-avatar-small">JS</div>
+            <i class="bi bi-chevron-down"></i>
+          </div>
+          <ul class="dropdown-menu dropdown-menu-end">
+            <li><a class="dropdown-item" href="#"><i class="bi bi-person me-2"></i>Profile</a></li>
+            <li><a class="dropdown-item" href="#"><i class="bi bi-gear me-2"></i>Settings</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item text-danger" href="#"><i class="bi bi-box-arrow-right me-2"></i>Logout</a></li>
+          </ul>
+        </div>
+      </header>
+      
+      <div class="content-area">
+        <div class="breadcrumb-wrapper">
+          <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+              <li class="breadcrumb-item"><a href="dashboard">Home</a></li>
+              <li class="breadcrumb-item"><a href="#">Analysis</a></li>
+              <li class="breadcrumb-item active">Node.js Security Analysis</li>
+            </ol>
+          </nav>
+        </div>
+        
+        <div class="page-header">
+          <div class="header-left">
+            <h1>Node.js Security Analysis</h1>
+            <p>Upload JavaScript files for security analysis</p>
+          </div>
+          <div class="header-right">
+            <button class="action-btn" onclick="document.getElementById('fileInput').click()">
+              <i class="bi bi-upload"></i> Choose File
+            </button>
+            <button class="action-btn primary" id="analyzeBtn">
+              <i class="bi bi-play"></i> Start Analysis
+            </button>
+          </div>
+        </div>
+        
+        <div class="filter-bar">
+          <div class="filter-left">
+            <span class="filter-tag active">All</span>
+            <span class="filter-tag">Node.js</span>
+            <span class="filter-tag">High Risk</span>
+            <span class="filter-tag">Pending</span>
+          </div>
+          <div class="filter-right">
+            <div class="view-toggle">
+              <span class="view-option active"><i class="bi bi-grid"></i></span>
+              <span class="view-option"><i class="bi bi-table"></i></span>
+            </div>
+          </div>
+        </div>
+        
+        <input type="file" id="fileInput" accept=".js" style="display: none;">
+        
+        <div class="upload-card" onclick="document.getElementById('fileInput').click()">
+          <i class="bi bi-cloud-upload" style="font-size: 48px; color: var(--primary);"></i>
+          <h4 class="mt-3">Click or Drag to Upload JavaScript File</h4>
+          <p class="text-muted">Supports .js format, max 16MB</p>
+        </div>
+        
+        <div id="progressContainer" class="text-center mb-4" style="display: none;">
+          <div class="spinner-border text-primary"></div>
+          <p class="mt-2">Analyzing, please wait...</p>
+          <div class="progress" style="height: 20px; width: 100%;">
+            <div class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%"></div>
+          </div>
+        </div>
+        
+        <div id="resultContainer" style="display: none;">
+          <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>Node.js Analysis Results: <span id="moduleName" class="text-primary"></span></h1>
+            <div class="btn-group">
+              <button id="downloadReport" class="btn btn-outline-primary">
+                <i class="bi bi-download"></i> Download Report
+              </button>
+              <button id="downloadPOC" class="btn btn-outline-primary" style="display: none;">
+                <i class="bi bi-download"></i> Download POC
+              </button>
+              <button id="downloadJson" class="btn btn-outline-primary">
+                <i class="bi bi-download"></i> Download Full Data
+              </button>
+            </div>
+          </div>
+          
+          <div class="analysis-section">
+            <div class="collapsible-section" onclick="toggleSection('nodejsAnalysis')">
+              <i class="bi bi-diagram-3"></i>
+              <h3>Node.js Component Analysis</h3>
+              <span class="badge bg-info" id="nodejsBadge">0</span>
+              <i class="bi bi-chevron-down ms-auto"></i>
+            </div>
+            <div id="nodejsAnalysis" class="collapsible-content">
+              <div id="nodejsContent">No analysis data available</div>
+            </div>
+          </div>
+          
+          <div class="analysis-section">
+            <div class="collapsible-section" onclick="toggleSection('rootcauseAnalysis')">
+              <i class="bi bi-bug"></i>
+              <h3>Vulnerability Root Cause Analysis</h3>
+              <span class="badge bg-danger" id="rootcauseBadge">0</span>
+              <i class="bi bi-chevron-down ms-auto"></i>
+            </div>
+            <div id="rootcauseAnalysis" class="collapsible-content">
+              <div id="rootcauseContent">No analysis data available</div>
+            </div>
+          </div>
+          
+          <div class="analysis-section">
+            <div class="collapsible-section" onclick="toggleSection('exploitAnalysis')">
+              <i class="bi bi-shield-exclamation"></i>
+              <h3>Exploit Analysis</h3>
+              <span class="badge bg-warning" id="exploitBadge">0</span>
+              <i class="bi bi-chevron-down ms-auto"></i>
+            </div>
+            <div id="exploitAnalysis" class="collapsible-content">
+              <div id="exploitContent">No analysis data available</div>
+            </div>
+          </div>
+          
+          <div class="analysis-section">
+            <div class="collapsible-section" onclick="toggleSection('pocVerification')">
+              <i class="bi bi-check-circle"></i>
+              <h3>POC Reachability Verification</h3>
+              <span class="badge bg-success" id="pocBadge">0</span>
+              <i class="bi bi-chevron-down ms-auto"></i>
+            </div>
+            <div id="pocVerification" class="collapsible-content">
+              <div id="pocContent">No analysis data available</div>
+            </div>
+          </div>
+          
+          <div class="analysis-section">
+            <div class="collapsible-section" onclick="toggleSection('analysisGraph')">
+              <i class="bi bi-diagram-3"></i>
+              <h3>Analysis Dependency Graph</h3>
+              <span class="badge bg-primary" id="graphBadge">0</span>
+              <i class="bi bi-chevron-down ms-auto"></i>
+            </div>
+            <div id="analysisGraph" class="collapsible-content">
+              <div class="graph-container">
+                <div class="zoom-controls">
+                  <button class="btn btn-sm btn-outline-secondary" onclick="zoomIn()"><i class="bi bi-zoom-in"></i></button>
+                  <button class="btn btn-sm btn-outline-secondary" onclick="zoomOut()"><i class="bi bi-zoom-out"></i></button>
+                  <button class="btn btn-sm btn-outline-secondary" onclick="resetZoom()"><i class="bi bi-arrow-clockwise"></i></button>
+                </div>
+                <div class="legend">
+                  <div class="legend-item"><div class="legend-color" style="background: #4c78a8;"></div> Root Node</div>
+                  <div class="legend-item"><div class="legend-color" style="background: #54a24b;"></div> Component</div>
+                  <div class="legend-item"><div class="legend-color" style="background: #e45756;"></div> Root Cause</div>
+                  <div class="legend-item"><div class="legend-color" style="background: #f58518;"></div> Exploit</div>
+                </div>
+                <div id="graphSvgContainer" class="graph-svg-container"></div>
+              </div>
+              <div class="mt-3">
+                <button class="btn btn-sm btn-outline-info" type="button" data-bs-toggle="collapse" data-bs-target="#debugInfo">
+                  Show Debug Info
+                </button>
+                <div class="collapse mt-2" id="debugInfo">
+                  <div class="debug-info">
+                    <div id="debugContent">No debug information available</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <footer class="content-footer">
+          <div>© 2025 Node.js Security Analysis Tool · Version 2.0.0</div>
+          <div class="footer-links">
+            <a href="#">Documentation</a>
+            <a href="#">API</a>
+            <a href="#">Privacy Policy</a>
+            <a href="#">Contact Us</a>
+          </div>
+        </footer>
+      </div>
+    </main>
+  </div>
+  
+  <div class="shortcut-hint">
+    <kbd>⌘K</kbd> Search · <kbd>⌘S</kbd> Save · <kbd>⌘E</kbd> Export
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+  
+  <script type="module">
+    import { initSidebar, initSearchShortcut, toggleSection } from '/static/js/main.js';
+    import { initAnalyzer } from '/static/js/analyzer.js';
+    
+    // Initialize features
+    initSidebar();
+    initSearchShortcut();
+    
+    // Expose toggleSection globally
+    window.toggleSection = toggleSection;
+    
+    // Initialize analyzer
+    initAnalyzer();
+  </script>
+</body>
+</html>
